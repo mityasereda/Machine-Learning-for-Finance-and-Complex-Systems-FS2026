@@ -1,0 +1,71 @@
+# API Configuration
+# ===============
+data:
+  api_key: <YOUR_API_KEY>
+  base_url: "https://api.polygon.io/"
+  enforce_rate_limit: false
+
+# Weights & Biases Configuration
+# ============================
+wandb:
+  enabled: true
+  project: "rl-trading"
+  entity: <YOUR_WANDB_ENTITY>
+
+# Trading Strategy Parameters
+# =========================
+# Initial capital and trading costs
+backtesting:
+  initial_aum: 100000.0
+  commission: 0.0035
+  min_commission_per_order: 0.35
+  band_multiplier: 1
+  band_simplified: 0
+  trade_frequency: 30
+  position_sizing_type: "vol_target"
+  target_volatility: 0.02
+  max_leverage: 4
+  
+  # Market Impact Settings
+  market_impact:
+    enabled: false  # Set to false to disable market impact calculations
+    window: 15  # minutes to look back for market impact calculation
+    impact_threshold: 0.02 # threshold for considering non-linear impact (1% of daily volume)
+    max_impact: 0.10  # maximum allowed market impact (10%)
+    fallback_model: true  # use fallback model when real-time data is unavailable
+    api_retry_limit: 3  # number of retries for API calls
+    cache_results: true  # cache API results to reduce API calls
+
+# Reinforcement Learning Parameters
+rl:
+  # Model Architecture
+  hidden_dim: 256
+  learning_rate: 0.0003
+  gamma: 0.99  # Discount factor
+  epsilon: 0.2  # PPO clipping parameter
+  epochs: 10   # Number of epochs to update policy
+  batch_size: 64
+
+  # Training Parameters
+  num_episodes: 15 # 50 # 1000
+  max_steps: 1000 # 1000 - 1000 is the last applicable episode
+  save_interval: 100  # Save model every N episodes
+
+  # Environment Parameters
+  initial_balance: 100000
+  transaction_cost: 0.001  # 0.1% transaction cost
+  reward_scaling: 1.0
+
+  # State Space
+  lookback_window: 20  # Number of time steps to look back
+  features:
+    - price
+    - volume
+    - rsi
+    - macd
+    - bollinger_bands
+    - market_impact
+
+  # Action Space
+  max_position_size: 1.0  # Maximum position size as fraction of portfolio
+  position_step: 0.1     # Step size for position changes
