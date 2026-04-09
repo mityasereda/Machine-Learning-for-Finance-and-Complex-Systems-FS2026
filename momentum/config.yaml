@@ -1,3 +1,6 @@
+# Reproducibility
+seed: 42
+
 # API Configuration
 # ===============
 data:

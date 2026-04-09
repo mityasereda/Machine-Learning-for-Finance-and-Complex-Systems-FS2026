@@ -9,7 +9,8 @@ from datetime import datetime
 import os
 from tqdm import tqdm
 import wandb
-import json 
+import json
+from seed_utils import set_seed
 
 def load_config():
     with open('config.yaml', 'r') as f:
@@ -28,6 +29,7 @@ def train(config, tickers, from_date, until_date, robust_params=None):
             name=run_name,
             config={
                 **config['rl'],
+                'seed': config.get('seed', 42),
                 'robust_params': robust_params,
                 'tickers': tickers
             }
@@ -156,7 +158,8 @@ def train(config, tickers, from_date, until_date, robust_params=None):
 
 def main():
     config = load_config()
-    
+    set_seed(config.get('seed', 42))
+
     # Robust params following Theorem 3.5 from the paper.
     # "p1N2" — Theorem 3.5(b): elliptic uncertainty set (p=1, N=2)
     # "p1"   — Theorem 3.5(a): ball uncertainty set (p=1, N=1)

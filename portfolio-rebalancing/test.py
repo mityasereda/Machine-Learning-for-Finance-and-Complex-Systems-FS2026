@@ -10,6 +10,7 @@ from datetime import datetime
 import os
 import matplotlib.pyplot as plt
 from market_impact import MarketImpactCalculator
+from seed_utils import set_seed
 
 def load_config():
     with open('config.yaml', 'r') as f:
@@ -197,7 +198,9 @@ def final_backtest_rl(tickers, model_path,
 
 if __name__ == "__main__":
     os.makedirs('backtest_rl_results', exist_ok=True)
-    
+    config = load_config()
+    set_seed(config.get('seed', 42))
+
     test_from_date = '2022-05-09'
     test_until_date = '2022-11-09'
     

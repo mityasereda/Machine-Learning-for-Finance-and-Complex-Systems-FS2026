@@ -10,6 +10,7 @@ from datetime import datetime
 import os
 import matplotlib.pyplot as plt
 from market_impact import MarketImpactCalculator
+from seed_utils import set_seed
 
 def load_config():
     with open('config.yaml', 'r') as f:
@@ -181,6 +182,8 @@ def final_backtest_rl(ticker, model_path):
     return comparison_results
 
 if __name__ == "__main__":
+    config = load_config()
+    set_seed(config.get('seed', 42))
     # enumerate all files in models folder
     for file in os.listdir('models'):
         if file.endswith('.pth'):

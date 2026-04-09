@@ -4,6 +4,7 @@ import yaml
 from data import get_data
 from backtest import BacktestEngine
 from visualization import plot_strategy_performance, print_statistics
+from seed_utils import set_seed
 
 
 def final_backtest_momentum(ticker, from_date, until_date):
@@ -58,8 +59,10 @@ def final_backtest_momentum(ticker, from_date, until_date):
 
 if __name__ == "__main__":
     import os
+    with open('config.yaml', 'r') as f:
+        _config = yaml.safe_load(f)
+    set_seed(_config.get('seed', 42))
 
- 
     # ETFs and stocks: Momentum-friendly and Momentum-resistant
     tickers = [
         # ETFs

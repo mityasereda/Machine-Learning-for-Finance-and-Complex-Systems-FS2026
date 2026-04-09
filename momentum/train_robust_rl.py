@@ -11,6 +11,7 @@ from tqdm import tqdm
 import wandb
 import json
 from backtest_rl import final_backtest_rl
+from seed_utils import set_seed
 
 def load_config():
     with open('config.yaml', 'r') as f:
@@ -43,6 +44,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
             name=run_name,
             config={
                 **config['rl'],
+                'seed': config.get('seed', 42),
                 'robust_params': robust_params,
                 'ticker': ticker
             }
@@ -173,6 +175,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
 def main():
     # Load configuration
     config = load_config()
+    set_seed(config.get('seed', 42))
     robust_params = {
         "robust_type": "p1N2",
         "beta": 1e-4,
