@@ -70,52 +70,120 @@ class PPOTrainer:
         
         return action_probs.squeeze(0).cpu().numpy()
     
+    def _get_price_indices(self, robust_params):
+        """Get indices of the most recent price for each ticker in the state vector.
+
+        State layout: for each ticker, [prices(lookback), volumes(lookback),
+        returns(lookback), volatilities(lookback)] concatenated.
+        """
+        num_tickers = self.action_dim  # one action per ticker
+        lookback = self.state_dim // (num_tickers * 4)
+        # Most recent price for ticker i is at offset: i * lookback * 4 + (lookback - 1)
+        return [i * lookback * 4 + (lookback - 1) for i in range(num_tickers)]
+
+    def _build_discretized_values(self, next_states, robust_params):
+        """Construct the 3-dim value vector v by evaluating the critic at
+        3 discretized next-price states: [p+eps, p, p-eps].
+
+        For multi-asset, all tickers' prices are shifted simultaneously.
+
+        Returns:
+            v: tensor of shape [batch, 3] with critic values at each price variant.
+        """
+        eps = robust_params["epsilon"]
+        price_indices = self._get_price_indices(robust_params)
+
+        ns_up = next_states.clone()
+        ns_same = next_states.clone()
+        ns_down = next_states.clone()
+
+        for idx in price_indices:
+            ns_up[:, idx] += eps
+            ns_down[:, idx] -= eps
+
+        with torch.no_grad():
+            _, v_up = self.actor_critic(ns_up)        # [batch, 1]
+            _, v_same = self.actor_critic(ns_same)    # [batch, 1]
+            _, v_down = self.actor_critic(ns_down)    # [batch, 1]
+
+        return torch.cat([v_up, v_same, v_down], dim=1)  # [batch, 3]
+
     def calculate_u_star(self, states, actions, next_states, robust_params):
+        """Calculate worst-case perturbation u* per Theorem 3.5 of the paper.
+
+        For multi-asset portfolio rebalancing, the perturbation is applied to
+        the aggregate portfolio (all tickers' prices shifted together).
+
+        Returns:
+            correction: tensor of shape [batch] — the scalar v^T u* per sample,
+                        to be added to advantages as gamma * correction.
+        """
         robust_type = robust_params["robust_type"]
         beta = robust_params["beta"]
-        p2_coef = robust_params["p2_coef"]
-        epsilon = robust_params["epsilon"]
 
-        u_dim = robust_params["u_dim"]
-        p = torch.zeros(u_dim)
-        p -= epsilon/u_dim
-        
+        # Build 3-dim value vector: V(s') at [p+eps, p, p-eps]
+        v = self._build_discretized_values(next_states, robust_params)  # [batch, 3]
+
         if robust_type == "p1N2":
-            _, values = self.actor_critic(states) 
-            max_value_indices = torch.argmax(values, dim=0)
-            min_value_indices = torch.argmin(values, dim=0) 
-            v_max = values[max_value_indices]
-            v_min = values[min_value_indices] 
-            
-            p2 = torch.ones(actions.shape) * p2_coef  
-            p2 = torch.abs(p2 - beta / self.state_dim) / 2  
-            p2 = p2.to(self.device)
-            actions = actions.to(self.device)
-            return p2 * actions * self.robust_params["beta"]
-            
-        elif robust_type == "p1N1":
-            _, values = self.actor_critic(states) 
-            max_value_indices = torch.argmax(values, dim=0)
-            min_value_indices = torch.argmin(values, dim=0) 
-            v_max = values[max_value_indices]
-            v_min = values[min_value_indices] 
-            mu_start = -(v_min + v_max) / 2
-            lambda_start = (v_max - v_min) / 4
-            
-            raise NotImplementedError("p1N1 not implemented for multi-ticker")
-            
+            # Theorem 3.5(b): p=1, N=2 (elliptic uncertainty set)
+            focus_buy = torch.tensor(
+                robust_params["focus_buy"], dtype=torch.float32, device=self.device
+            )
+            focus_sell = torch.tensor(
+                robust_params["focus_sell"], dtype=torch.float32, device=self.device
+            )
+
+            # For multi-asset: use net portfolio action to determine buy/sell direction
+            # actions shape: [batch, num_tickers], use mean action sign as aggregate
+            net_action = actions.mean(dim=1, keepdim=True)  # [batch, 1]
+            is_buy = (net_action > 0.5).float()  # Sigmoid actor outputs in [0,1]; >0.5 = buy
+            u1 = is_buy * focus_buy.unsqueeze(0) + (1 - is_buy) * focus_sell.unsqueeze(0)
+            u2 = torch.zeros_like(u1)
+
+            # Midpoint of foci
+            midpoint = (u1 + u2) / 2
+
+            # ||u1 - u2||_1
+            u_diff_l1 = torch.sum(torch.abs(u1 - u2), dim=1, keepdim=True)
+
+            # Scaling factor
+            scale = (beta - u_diff_l1) / 2
+
+            # Compute mu* and lambda*
+            v_max = v.max(dim=1, keepdim=True).values
+            v_min = v.min(dim=1, keepdim=True).values
+            mu_star = -(v_max + v_min) / 2
+            lambda_star = -(v_max - v_min) / 4
+
+            v_shifted = v + mu_star
+
+            # Indicator: |v + mu*| >= 2|lambda*|
+            tol = 1e-6
+            indicator = (torch.abs(v_shifted) >= 2 * torch.abs(lambda_star) - tol).float()
+            sign_v = torch.sign(v_shifted)
+
+            u_star = midpoint - scale * sign_v * indicator
+            correction = torch.sum(v * u_star, dim=1)
+            return correction
+
         elif robust_type == "p1":
-            _, values = self.actor_critic(states) 
-            max_value_indices = torch.argmax(values, dim=0)
-            min_value_indices = torch.argmin(values, dim=0) 
-            v_max = values[max_value_indices]
-            v_min = values[min_value_indices] 
-            
-            actions = actions.to(self.device)
-            return actions * self.robust_params["beta"]
-            
+            # Theorem 3.5(a): N=1, p=1 (q=inf), u1=0 (ball uncertainty set)
+            v_max = v.max(dim=1, keepdim=True).values
+            v_min = v.min(dim=1, keepdim=True).values
+            mu_star = -(v_max + v_min) / 2
+
+            v_shifted = v + mu_star
+            abs_v = torch.abs(v_shifted)
+            max_idx = torch.argmax(abs_v, dim=1, keepdim=True)
+            indicator = torch.zeros_like(v).scatter_(1, max_idx, 1.0)
+            sign_v = torch.sign(v_shifted)
+
+            u_star = beta * sign_v * indicator
+            correction = torch.sum(v * u_star, dim=1)
+            return correction
+
         else:
-            raise Exception("Invalid robust type")
+            raise ValueError(f"Invalid robust type: {robust_type}. Use 'p1N2' or 'p1'.")
     
     def update(self, states, actions, rewards, next_states, dones):
         states = torch.FloatTensor(states).to(self.device)
@@ -153,7 +221,7 @@ class PPOTrainer:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         if self.robust_params is not None:
-            advantages = advantages + (u_star * self.gamma).mean(dim=1)  
+            advantages = advantages + u_star * self.gamma
 
         old_action_probs, _ = self.actor_critic(states)
         old_action_probs = old_action_probs.detach()

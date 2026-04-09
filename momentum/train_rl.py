@@ -34,7 +34,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
     if config['wandb']['enabled']:
         # Create a meaningful run name
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}_p2{robust_params['p2_coef']}" if robust_params else "no_robust"
+        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
         run_name = f"{ticker}_PPO_{robust_str}_lr{config['rl']['learning_rate']}_gamma{config['rl']['gamma']}_ep{config['rl']['num_episodes']}_{timestamp}"
         
         wandb.init(
@@ -149,7 +149,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         })
         
         # Generate model name with robust params
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}_p2{robust_params['p2_coef']}" if robust_params else "no_robust"
+        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
         
         # Save model if it's the best so far
         if episode_reward > best_reward:
@@ -173,7 +173,19 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
 def main():
     # Load configuration
     config = load_config() 
-    robust_params = None 
+    # Robust params following Theorem 3.5 from the paper.
+    # Set to None to disable robustness, or use one of:
+    #   "p1N2" — Theorem 3.5(b): elliptic uncertainty set (p=1, N=2)
+    #   "p1"   — Theorem 3.5(a): ball uncertainty set (p=1, N=1)
+    robust_params = {
+        "robust_type": "p1N2",
+        "beta": 1e-4,               # uncertainty size
+        "epsilon": 1e-3,            # price discretization step delta
+        "u_dim": 3,                 # 2N+1 discretized prices
+        # Foci for buy/sell (from paper Appendix E.3, page 41):
+        "focus_buy":  [0.1 - 1/3, -1/3, -1/3],    # shifts mass toward higher price
+        "focus_sell": [-1/3, -1/3, 0.1 - 1/3],     # shifts mass toward lower price
+    }
     assets = [
         "META", "MSFT", 'SPY'
     ] 

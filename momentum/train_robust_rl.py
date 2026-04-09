@@ -34,7 +34,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
     if config['wandb']['enabled']:
         # Create a meaningful run name
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}_p2{robust_params['p2_coef']}" if robust_params else "no_robust"
+        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
         run_name = f"{ticker}_PPO_{robust_str}_lr{config['rl']['learning_rate']}_gamma{config['rl']['gamma']}_ep{config['rl']['num_episodes']}_{timestamp}"
         
         wandb.init(
@@ -149,7 +149,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         })
         
         # Generate model name with robust params
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}_p2{robust_params['p2_coef']}" if robust_params else "no_robust"
+        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
         
         # Save model if it's the best so far
         if episode_reward > best_reward:
@@ -175,11 +175,12 @@ def main():
     config = load_config()
     robust_params = {
         "robust_type": "p1N2",
-        "beta": 0.0001,
-        "p2_coef": 1.0,
+        "beta": 1e-4,
+        "epsilon": 1e-3,
         "u_dim": 3,
-        "epsilon": 0.001
-    }  
+        "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
+        "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
+    }
 
     assets = [
         "META", "MSFT", 'SPY'

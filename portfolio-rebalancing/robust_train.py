@@ -18,7 +18,7 @@ def load_config():
 def train(config, tickers, from_date, until_date, robust_params=None):
     if config['wandb']['enabled']:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}_p2{robust_params['p2_coef']}" if robust_params else "no_robust"
+        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
         tickers_str = "_".join(tickers)
         run_name = f"{tickers_str}_PPO_{robust_str}_lr{config['rl']['learning_rate']}_gamma{config['rl']['gamma']}_ep{config['rl']['num_episodes']}_{timestamp}"
         
@@ -135,7 +135,7 @@ def train(config, tickers, from_date, until_date, robust_params=None):
         })
         
         tickers_str = "_".join(tickers)
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}_p2{robust_params['p2_coef']}" if robust_params else "no_robust"
+        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
         
         if episode_reward > best_reward:
             best_reward = episode_reward
@@ -157,12 +157,17 @@ def train(config, tickers, from_date, until_date, robust_params=None):
 def main():
     config = load_config()
     
+    # Robust params following Theorem 3.5 from the paper.
+    # "p1N2" — Theorem 3.5(b): elliptic uncertainty set (p=1, N=2)
+    # "p1"   — Theorem 3.5(a): ball uncertainty set (p=1, N=1)
     robust_params = {
         "robust_type": "p1",
-        "beta": 0.0001,
-        "p2_coef": 1.0,
-        "epsilon": 0.01,
-        "u_dim": 3
+        "beta": 1e-4,
+        "epsilon": 1e-3,
+        "u_dim": 3,
+        # Foci for buy/sell (from paper Appendix E.3, page 41):
+        "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
+        "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
     }
     
     tickers = ["SPY", "TLT", "GLD", "EFA", "VNQ"]

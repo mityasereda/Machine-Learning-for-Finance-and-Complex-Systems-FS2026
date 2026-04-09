@@ -76,64 +76,116 @@ class PPOTrainer:
             action_probs, _ = self.actor_critic(state)
         return action_probs.squeeze(0).cpu().numpy()
     
+    def _build_discretized_values(self, next_states, robust_params):
+        """Construct the 3-dim value vector v by evaluating the critic at
+        3 discretized next-price states: [p+eps, p, p-eps].
+
+        Returns:
+            v: tensor of shape [batch, 3] with critic values at each price variant.
+        """
+        eps = robust_params["epsilon"]
+        price_idx = self.state_dim // 4 - 1  # last price index in lookback window
+
+        ns_up = next_states.clone()
+        ns_up[:, price_idx] += eps
+
+        ns_same = next_states.clone()
+
+        ns_down = next_states.clone()
+        ns_down[:, price_idx] -= eps
+
+        with torch.no_grad():
+            _, v_up = self.actor_critic(ns_up)        # [batch, 1]
+            _, v_same = self.actor_critic(ns_same)    # [batch, 1]
+            _, v_down = self.actor_critic(ns_down)    # [batch, 1]
+
+        return torch.cat([v_up, v_same, v_down], dim=1)  # [batch, 3]
+
     def calculate_u_star(self, states, actions, next_states, robust_params):
+        """Calculate worst-case perturbation u* per Theorem 3.5 of the paper.
+
+        Returns:
+            correction: tensor of shape [batch] — the scalar v^T u* per sample,
+                        to be added to advantages as gamma * correction.
+        """
         robust_type = robust_params["robust_type"]
         beta = robust_params["beta"]
-        p2_coef = robust_params["p2_coef"]
-        epsilon = robust_params["epsilon"]
 
-        current_price = states[:, 29] 
-        next_price = next_states[:, 29] 
-        # Adjust the allocation in the next_states 
-        # next_states[:, 0:29]  -- pass   
-        with torch.no_grad():
-            _, next_values = self.actor_critic(next_states)
-        v_sprime = 0 
+        # Build 3-dim value vector: V(s') at [p+eps, p, p-eps]
+        v = self._build_discretized_values(next_states, robust_params)  # [batch, 3]
 
-        # u^* = [0, 1, 2, ... , u_dim-1]
-        # 靠近0是降价， 靠近u_dim-1是涨价
-        # u_star的维度由参数决定
-        u_dim = 3 # robust_params["u_dim"] # Must be 3 
-        p = torch.zeros(u_dim)
-        p -= epsilon/u_dim  
-        # Calculate the price impacted by the action (use XXX model) --> this is used to determine u_2. u_1 is zero. 
-        u = torch.zeros(states.shape[0]) # [bs]
         if robust_type == "p1N2":
-            _, values = self.actor_critic(states) 
-            max_value_indices = torch.argmax(values, dim=0)
-            min_value_indices = torch.argmin(values, dim=0) 
-            v_max = values[max_value_indices]
-            v_min = values[min_value_indices] 
-            mu_start =  - (v_min + v_max) / 2
-            lambda_start = (v_max - v_min) / 4 
-            u[max_value_indices] = 1.0
-            u[min_value_indices] = -1.0
-            u = u*beta/4  
-            p2 = torch.ones(actions.shape)*p2_coef  
-            p2 = torch.abs(p2 - beta/self.state_dim)/2  
-            p2 = p2.to(self.device)
-            actions = actions.to(self.device)
-            return p2 * actions * self.robust_params["beta"]
-        elif robust_type == "p1N1":
-            _, values = self.actor_critic(states) 
-            max_value_indices = torch.argmax(values, dim=0)
-            min_value_indices = torch.argmin(values, dim=0) 
-            v_max = values[max_value_indices]
-            v_min = values[min_value_indices] 
-            mu_start =  - (v_min + v_max) / 2
-            lambda_start = (v_max - v_min) / 4 
+            # Theorem 3.5(b): p=1, N=2 (elliptic uncertainty set)
+            # Foci: u1 is action-dependent (buy/sell), u2 = 0
+            focus_buy = torch.tensor(
+                robust_params["focus_buy"], dtype=torch.float32, device=self.device
+            )
+            focus_sell = torch.tensor(
+                robust_params["focus_sell"], dtype=torch.float32, device=self.device
+            )
+
+            # Select focus based on action sign: actions > 0 -> buy, <= 0 -> sell
+            is_buy = (actions > 0).float()  # [batch, 1]
+            if is_buy.dim() == 1:
+                is_buy = is_buy.unsqueeze(1)
+            u1 = is_buy * focus_buy.unsqueeze(0) + (1 - is_buy) * focus_sell.unsqueeze(0)  # [batch, 3]
+            u2 = torch.zeros_like(u1)  # [batch, 3]
+
+            # Midpoint of foci
+            midpoint = (u1 + u2) / 2  # [batch, 3]
+
+            # ||u1 - u2||_1
+            u_diff_l1 = torch.sum(torch.abs(u1 - u2), dim=1, keepdim=True)  # [batch, 1]
+
+            # Scaling factor: (beta - ||u1 - u2||_1) / 2
+            scale = (beta - u_diff_l1) / 2  # [batch, 1]
+
+            # Compute mu* and lambda* from Theorem 3.5(b)
+            v_max = v.max(dim=1, keepdim=True).values   # [batch, 1]
+            v_min = v.min(dim=1, keepdim=True).values   # [batch, 1]
+            mu_star = -(v_max + v_min) / 2              # [batch, 1]
+            lambda_star = -(v_max - v_min) / 4          # [batch, 1]
+
+            # v + mu* * 1
+            v_shifted = v + mu_star  # [batch, 3]
+
+            # Indicator: |v + mu*| >= 2|lambda*| (relaxed from exact equality)
+            tol = 1e-6
+            indicator = (torch.abs(v_shifted) >= 2 * torch.abs(lambda_star) - tol).float()
+
+            # sign(v + mu*)
+            sign_v = torch.sign(v_shifted)
+
+            # u* = midpoint - scale * sign(v + mu*) * indicator
+            u_star = midpoint - scale * sign_v * indicator  # [batch, 3]
+
+            # Return scalar correction: v^T u* per sample
+            correction = torch.sum(v * u_star, dim=1)  # [batch]
+            return correction
+
         elif robust_type == "p1":
-            _, values = self.actor_critic(states) 
-            max_value_indices = torch.argmax(values, dim=0)
-            min_value_indices = torch.argmin(values, dim=0) 
-            v_max = values[max_value_indices]
-            v_min = values[min_value_indices] 
-            mu_start =  - (v_min + v_max) / 2
-            lambda_start = (v_max - v_min) / 4 
-            actions = actions.to(self.device)
-            return actions * self.robust_params["beta"]
+            # Theorem 3.5(a): N=1, p=1 (q=inf), u1=0 (ball uncertainty set)
+            # u* concentrates all perturbation on the coordinate with max |v + mu*|
+            v_max = v.max(dim=1, keepdim=True).values
+            v_min = v.min(dim=1, keepdim=True).values
+            mu_star = -(v_max + v_min) / 2
+
+            v_shifted = v + mu_star  # [batch, 3]
+
+            # For p=1 (q=inf): u* = beta * sign(v_{j*}) * e_{j*}
+            # where j* = argmax_j |v_j + mu*|
+            abs_v = torch.abs(v_shifted)
+            max_idx = torch.argmax(abs_v, dim=1, keepdim=True)  # [batch, 1]
+            indicator = torch.zeros_like(v).scatter_(1, max_idx, 1.0)
+            sign_v = torch.sign(v_shifted)
+
+            u_star = beta * sign_v * indicator  # [batch, 3]
+
+            correction = torch.sum(v * u_star, dim=1)  # [batch]
+            return correction
+
         else:
-            raise Exception("Invalid robust type") 
+            raise ValueError(f"Invalid robust type: {robust_type}. Use 'p1N2' or 'p1'.")
     
     def update(self, states, actions, rewards, next_states, dones):
         """Update policy using PPO algorithm"""
