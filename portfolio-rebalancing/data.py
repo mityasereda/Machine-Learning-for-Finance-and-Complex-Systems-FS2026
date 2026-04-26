@@ -5,13 +5,149 @@ import pandas as pd
 import time
 from datetime import datetime
 import numpy as np
+from pathlib import Path
 
-with open('config.yaml', 'r') as file:
+
+CONFIG_PATH = Path(__file__).with_name('config.yaml')
+MODULE_DIR = CONFIG_PATH.parent
+
+
+with CONFIG_PATH.open('r') as file:
     config = yaml.safe_load(file) 
 
-API_KEY = config["data"]["api_key"]
-BASE_URL = config["data"]["base_url"] 
-ENFORCE_RATE_LIMIT = config["data"]["enforce_rate_limit"]
+DATA_CONFIG = config["data"]
+API_KEY = DATA_CONFIG.get("api_key")
+BASE_URL = DATA_CONFIG.get("base_url")
+ENFORCE_RATE_LIMIT = DATA_CONFIG.get("enforce_rate_limit", False)
+DATA_PROVIDER = DATA_CONFIG.get("provider", "polygon").lower()
+
+
+def _resolve_data_path(path_value):
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = (MODULE_DIR / path).resolve()
+    return path
+
+
+def _load_local_frame(path, parse_dates=None):
+    if not path.exists():
+        raise FileNotFoundError(f"Expected local WRDS file at {path}")
+
+    if path.suffix == '.parquet':
+        return pd.read_parquet(path)
+    if path.suffix == '.csv':
+        return pd.read_csv(path, parse_dates=parse_dates)
+
+    raise ValueError(f"Unsupported file format for {path}")
+
+
+def _normalize_intraday_frame(df):
+    df = df.copy()
+    if 'caldt' not in df.columns:
+        if df.index.name == 'caldt':
+            df = df.reset_index()
+        else:
+            raise ValueError("Intraday data must include a 'caldt' column")
+
+    df['caldt'] = pd.to_datetime(df['caldt'])
+    df['day'] = pd.to_datetime(df.get('day', df['caldt'])).dt.date
+    df.sort_values('caldt', inplace=True)
+    df.set_index('caldt', inplace=True, drop=False)
+    return df
+
+
+def _normalize_daily_frame(df):
+    df = df.copy()
+    if 'caldt' not in df.columns:
+        if 'date' in df.columns:
+            df = df.rename(columns={'date': 'caldt'})
+        elif df.index.name == 'caldt':
+            df = df.reset_index()
+        else:
+            raise ValueError("Daily data must include a 'caldt' column")
+
+    df['caldt'] = pd.to_datetime(df['caldt'])
+    df.sort_values('caldt', inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    return df
+
+
+def _prepare_intraday_frame(intraday_rows, dividends):
+    df = pd.DataFrame(intraday_rows)
+    df['caldt'] = pd.to_datetime(df['caldt'])
+    df['day'] = df['caldt'].dt.date
+    df.set_index('caldt', inplace=True, drop=False)
+
+    daily_groups = df.groupby('day')
+    all_days = df['day'].unique()
+
+    df['move_open'] = np.nan
+    df['vwap'] = np.nan
+    df['spy_dvol'] = np.nan
+
+    spy_ret = pd.Series(index=all_days, dtype=float)
+
+    for d in range(1, len(all_days)):
+        current_day = all_days[d]
+        prev_day = all_days[d - 1]
+
+        current_day_data = daily_groups.get_group(current_day)
+        prev_day_data = daily_groups.get_group(prev_day)
+
+        hlc = (current_day_data['high'] + current_day_data['low'] + current_day_data['close']) / 3
+        vol_x_hlc = current_day_data['volume'] * hlc
+        cum_vol_x_hlc = vol_x_hlc.cumsum()
+        cum_volume = current_day_data['volume'].cumsum()
+
+        df.loc[current_day_data.index, 'vwap'] = cum_vol_x_hlc / cum_volume
+
+        open_price = current_day_data['open'].iloc[0]
+        df.loc[current_day_data.index, 'move_open'] = (current_day_data['close'] / open_price - 1).abs()
+
+        spy_ret.loc[current_day] = (
+            current_day_data['close'].iloc[-1] / prev_day_data['close'].iloc[-1] - 1
+        )
+
+        if d > 14:
+            df.loc[current_day_data.index, 'spy_dvol'] = spy_ret.iloc[d - 15:d - 1].std(skipna=False)
+
+    df['min_from_open'] = ((df.index - df.index.normalize()) / pd.Timedelta(minutes=1)) - (9 * 60 + 30) + 1
+    df['minute_of_day'] = df['min_from_open'].round().astype(int)
+
+    minute_groups = df.groupby('minute_of_day')
+    df['move_open_rolling_mean'] = minute_groups['move_open'].transform(
+        lambda x: x.rolling(window=14, min_periods=13).mean()
+    )
+    df['sigma_open'] = minute_groups['move_open_rolling_mean'].transform(lambda x: x.shift(1))
+
+    df = df.reset_index(drop=True)
+
+    if not dividends.empty:
+        dividends = dividends.copy()
+        dividends['day'] = pd.to_datetime(dividends['caldt']).dt.date
+        df = df.merge(dividends[['day', 'dividend']], on='day', how='left')
+    else:
+        df['dividend'] = 0
+
+    df['dividend'] = df['dividend'].fillna(0)
+    return _normalize_intraday_frame(df)
+
+
+def _get_wrds_file_path(kind, ticker):
+    root_dir = _resolve_data_path(DATA_CONFIG.get("wrds_root_dir", "../data/wrds"))
+    subdir_key = "wrds_intraday_subdir" if kind == 'intraday' else "wrds_daily_subdir"
+    suffix = '1min' if kind == 'intraday' else 'daily'
+    file_format = DATA_CONFIG.get("wrds_file_format", "parquet").lower()
+    return root_dir / DATA_CONFIG.get(subdir_key) / f"{ticker}_{suffix}.{file_format}"
+
+
+def _get_wrds_data(ticker):
+    intraday_path = _get_wrds_file_path('intraday', ticker)
+    daily_path = _get_wrds_file_path('daily', ticker)
+
+    df_intra = _normalize_intraday_frame(_load_local_frame(intraday_path, parse_dates=['caldt']))
+    df_daily = _normalize_daily_frame(_load_local_frame(daily_path, parse_dates=['caldt']))
+    return df_intra, df_daily
 
 
 def fetch_polygon_data(ticker, start_date, end_date, period, enforce_rate_limit=ENFORCE_RATE_LIMIT):
@@ -104,6 +240,11 @@ def fetch_polygon_dividends(ticker):
     return pd.DataFrame(dividends_list)
 
 def get_data(ticker, from_date, until_date):
+    if DATA_PROVIDER == 'wrds':
+        return _get_wrds_data(ticker)
+    if DATA_PROVIDER != 'polygon':
+        raise ValueError(f"Unsupported data provider: {DATA_PROVIDER}")
+
     spy_intra_data = fetch_polygon_data(ticker, from_date, until_date, 'minute')
     spy_daily_data = fetch_polygon_data(ticker, from_date, until_date, 'day')
     dividends      = fetch_polygon_dividends(ticker)
@@ -112,61 +253,8 @@ def get_data(ticker, from_date, until_date):
         print(f"Warning: API returned empty data for {ticker} from {from_date} to {until_date}")
         return pd.DataFrame(), pd.DataFrame()
 
-    df = pd.DataFrame(spy_intra_data)
-    df['day'] = pd.to_datetime(df['caldt']).dt.date
-    df.set_index('caldt', inplace=True)
-
-    daily_groups = df.groupby('day')
-
-    all_days = df['day'].unique()
-
-    df['move_open'] = np.nan
-    df['vwap'] = np.nan
-    df['spy_dvol'] = np.nan
-
-    spy_ret = pd.Series(index=all_days, dtype=float)
-
-    for d in range(1, len(all_days)):
-        current_day = all_days[d]
-        prev_day = all_days[d - 1]
-
-        current_day_data = daily_groups.get_group(current_day)
-        prev_day_data = daily_groups.get_group(prev_day)
-
-        hlc = (current_day_data['high'] + current_day_data['low'] + current_day_data['close']) / 3
-
-        vol_x_hlc = current_day_data['volume'] * hlc
-        cum_vol_x_hlc = vol_x_hlc.cumsum()
-        cum_volume = current_day_data['volume'].cumsum()
-
-        df.loc[current_day_data.index, 'vwap'] = cum_vol_x_hlc / cum_volume
-
-        open_price = current_day_data['open'].iloc[0]
-        df.loc[current_day_data.index, 'move_open'] = (current_day_data['close'] / open_price - 1).abs()
-
-        spy_ret.loc[current_day] = current_day_data['close'].iloc[-1] / prev_day_data['close'].iloc[-1] - 1
-
-        if d > 14:
-            df.loc[current_day_data.index, 'spy_dvol'] = spy_ret.iloc[d - 15:d - 1].std(skipna=False)
-
-    df['min_from_open'] = ((df.index - df.index.normalize()) / pd.Timedelta(minutes=1)) - (9 * 60 + 30) + 1
-    df['minute_of_day'] = df['min_from_open'].round().astype(int)
-
-    minute_groups = df.groupby('minute_of_day')
-
-    df['move_open_rolling_mean'] = minute_groups['move_open'].transform(lambda x: x.rolling(window=14, min_periods=13).mean())
-    df['sigma_open'] = minute_groups['move_open_rolling_mean'].transform(lambda x: x.shift(1))
-
-    if not dividends.empty:
-        dividends['day'] = pd.to_datetime(dividends['caldt']).dt.date
-        df = df.merge(dividends[['day', 'dividend']], on='day', how='left')
-    else:
-        df['dividend'] = 0
-    
-    df['dividend'] = df['dividend'].fillna(0)
-
-    df_intra = df
-    df_daily = spy_daily_data
+    df_intra = _prepare_intraday_frame(spy_intra_data, dividends)
+    df_daily = _normalize_daily_frame(pd.DataFrame(spy_daily_data))
     return df_intra, df_daily
 
 if __name__ == "__main__":

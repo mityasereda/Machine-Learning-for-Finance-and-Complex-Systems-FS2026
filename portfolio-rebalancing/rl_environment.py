@@ -50,14 +50,19 @@ class TradingEnvironment(gym.Env):
         self.consider_market_impact = consider_market_impact
         
         if self.consider_market_impact:
+            data_config = config.get('data', {})
             self.market_impact = MarketImpactCalculator(
-                api_key=config['data']['api_key'],
+                api_key=data_config.get('api_key'),
                 market_impact_window=market_impact_config.get('window', 15),
                 impact_threshold=market_impact_config.get('impact_threshold', 0.01),
                 max_impact=market_impact_config.get('max_impact', 0.10),
                 fallback_model=market_impact_config.get('fallback_model', True),
                 api_retry_limit=market_impact_config.get('api_retry_limit', 3),
-                cache_results=market_impact_config.get('cache_results', True)
+                cache_results=market_impact_config.get('cache_results', True),
+                provider=data_config.get('provider', 'polygon'),
+                wrds_root_dir=data_config.get('wrds_root_dir'),
+                wrds_trades_subdir=data_config.get('wrds_trades_subdir', 'raw/taq_trades'),
+                wrds_file_format=data_config.get('wrds_file_format', 'parquet')
             )
         
         self.reset()

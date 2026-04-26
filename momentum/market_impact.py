@@ -2,11 +2,17 @@ import numpy as np
 import pandas as pd
 import requests
 from datetime import datetime, timedelta
+from pathlib import Path
+
+
+MODULE_DIR = Path(__file__).resolve().parent
 
 class MarketImpactCalculator:
     def __init__(self, api_key, base_url="https://api.polygon.io/v3/trades", 
                  market_impact_window=15, impact_threshold=0.01, max_impact=0.10,
-                 fallback_model=True, api_retry_limit=3, cache_results=True):
+                 fallback_model=True, api_retry_limit=3, cache_results=True,
+                 provider="polygon", wrds_root_dir=None,
+                 wrds_trades_subdir="raw/taq_trades", wrds_file_format="parquet"):
         self.api_key = api_key
         self.base_url = base_url
         self.market_impact_window = market_impact_window
@@ -16,6 +22,40 @@ class MarketImpactCalculator:
         self.api_retry_limit = api_retry_limit
         self.cache_results = cache_results
         self._cache = {}  # Simple cache for API results
+        self.provider = provider.lower()
+        if wrds_root_dir:
+            wrds_root = Path(wrds_root_dir).expanduser()
+            if not wrds_root.is_absolute():
+                wrds_root = (MODULE_DIR / wrds_root).resolve()
+            self.wrds_root_dir = wrds_root
+        else:
+            self.wrds_root_dir = None
+        self.wrds_trades_subdir = wrds_trades_subdir
+        self.wrds_file_format = wrds_file_format.lower()
+
+    def _load_wrds_trade_file(self, ticker, timestamp):
+        if self.wrds_root_dir is None:
+            return None
+
+        trade_date = pd.to_datetime(timestamp).date().isoformat()
+        path = self.wrds_root_dir / self.wrds_trades_subdir / ticker / f"{trade_date}.{self.wrds_file_format}"
+        if not path.exists():
+            return None
+
+        if path.suffix == '.parquet':
+            df = pd.read_parquet(path)
+        elif path.suffix == '.csv':
+            df = pd.read_csv(path, parse_dates=['timestamp'])
+        else:
+            raise ValueError(f"Unsupported WRDS trade file format: {path.suffix}")
+
+        if 'timestamp' not in df.columns or 'price' not in df.columns or 'size' not in df.columns:
+            return None
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        if 'value' not in df.columns:
+            df['value'] = df['price'] * df['size']
+        return df
 
     def fetch_trades(self, ticker, timestamp, limit=50000):
         """Fetch trades data from Polygon for a specific timestamp with a window"""
@@ -30,6 +70,22 @@ class MarketImpactCalculator:
         
         window_start = timestamp - pd.Timedelta(minutes=self.market_impact_window)
         window_end = timestamp
+
+        if self.provider == 'wrds':
+            trades_df = self._load_wrds_trade_file(ticker, timestamp)
+            if trades_df is None or trades_df.empty:
+                return None
+
+            trades_df = trades_df[
+                (trades_df['timestamp'] >= window_start) &
+                (trades_df['timestamp'] <= window_end)
+            ].copy()
+            if trades_df.empty:
+                return None
+
+            if self.cache_results:
+                self._cache[cache_key] = trades_df
+            return trades_df
 
         formatted_start = window_start.strftime("%Y-%m-%dT%H:%M:%SZ")
         formatted_end = window_end.strftime("%Y-%m-%dT%H:%M:%SZ")

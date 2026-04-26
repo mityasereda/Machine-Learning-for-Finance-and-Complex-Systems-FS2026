@@ -1,0 +1,8 @@
+.DS_Store
+.vscode/
+__pycache__/
+*/__pycache__/
+
+# Local WRDS extracts 
+data/wrds/raw/
+data/wrds/processed/
