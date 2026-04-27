@@ -3,13 +3,18 @@ import pandas as pd
 import gymnasium as gym
 from gymnasium import spaces
 from datetime import datetime, timedelta
+from pathlib import Path
 from market_impact import MarketImpactCalculator
 from data import get_data
 
+MODULE_DIR = Path(__file__).resolve().parent
+LOCAL_DATA_DIR = MODULE_DIR / 'data'
+
 def load_data(ticker, from_date, until_date):
     df_intra, df_daily = get_data(ticker, from_date, until_date)  
-    df_intra.to_csv(f'data/intraday_data_{ticker}.csv', index=False)
-    df_daily.to_csv(f'data/daily_data_{ticker}.csv', index=False)
+    LOCAL_DATA_DIR.mkdir(exist_ok=True)
+    df_intra.to_csv(LOCAL_DATA_DIR / f'intraday_data_{ticker}.csv', index=False)
+    df_daily.to_csv(LOCAL_DATA_DIR / f'daily_data_{ticker}.csv', index=False)
     return df_intra, df_daily
 
 class TradingEnvironment(gym.Env):

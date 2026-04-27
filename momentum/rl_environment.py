@@ -31,7 +31,10 @@ class TradingEnvironment(gym.Env):
         
         # Index the intraday data for faster access (needed for minute-level)
         if self.granularity == 'minute':
-            self.df_intra_indexed = df_intra.reset_index()
+            self.df_intra_indexed = df_intra.rename_axis('index').reset_index()
+            self.index_position_map = {
+                idx: pos for pos, idx in enumerate(self.df_intra_indexed['index'].tolist())
+            }
             self.total_steps = len(self.df_intra_indexed)
             self._create_day_indices_map()
         
@@ -75,10 +78,7 @@ class TradingEnvironment(gym.Env):
         self.day_indices = {}
         for day in self.days:
             day_data = self.df_intra[self.df_intra['day'] == day]
-            day_indices = [
-                self.df_intra_indexed[self.df_intra_indexed['index'] == idx].index[0]
-                for idx in day_data.index
-            ]
+            day_indices = [self.index_position_map[idx] for idx in day_data.index]
             self.day_indices[day] = day_indices
     
     def reset(self):

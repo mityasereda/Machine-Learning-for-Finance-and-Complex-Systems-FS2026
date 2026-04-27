@@ -6,3 +6,7 @@ __pycache__/
 # Local WRDS extracts 
 data/wrds/raw/
 data/wrds/processed/
+
+
+momentum/data/
+portfolio-rebalancing/data/
