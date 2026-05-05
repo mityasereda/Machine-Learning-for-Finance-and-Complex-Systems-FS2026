@@ -29,7 +29,7 @@ else:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ASSET_MAP = REPO_ROOT / "data" / "wrds" / "asset_map.example.csv"
+DEFAULT_ASSET_MAP = REPO_ROOT / "data" / "wrds" / "asset_map.csv"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data" / "wrds"
 
 
