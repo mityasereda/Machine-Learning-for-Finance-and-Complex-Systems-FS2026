@@ -51,7 +51,13 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         )
     
     # Create environment
-    env = TradingEnvironment(df_intra, df_daily, config, robust_params=None)
+    env = TradingEnvironment(
+        df_intra,
+        df_daily,
+        config,
+        consider_market_impact=False,
+        robust_params=None,
+    )
     
     # Get state and action dimensions
     state_dim = env.observation_space.shape[0]

@@ -38,11 +38,11 @@ def train(config, tickers, from_date, until_date, robust_params=None):
     env = TradingEnvironment(
         config=config, 
         initial_cash=config['backtesting'].get('initial_cash', 100000),
-        consider_market_impact=config['backtesting']['market_impact'].get('enabled', True),
+        consider_market_impact=False,
         tickers=tickers,
         from_date=from_date,
         until_date=until_date,
-        robust_params=robust_params
+        robust_params=None
     )
     
     state_dim = env.observation_space.shape[0]
