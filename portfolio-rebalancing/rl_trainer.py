@@ -192,8 +192,10 @@ class PPOTrainer:
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device) 
         
+        robust_bonus = None
         if self.robust_params is not None:
             u_star = self.calculate_u_star(states, actions, next_states, self.robust_params) 
+            robust_bonus = (u_star.reshape(-1) * self.gamma).detach()
             try: 
                 np.save(f'u_star_{self.robust_params["robust_type"]}.pkl', u_star.cpu().numpy()) 
             except: 
@@ -203,25 +205,20 @@ class PPOTrainer:
             _, values = self.actor_critic(states)
             _, next_values = self.actor_critic(next_states)
             
+            rewards_for_returns = rewards
+            if robust_bonus is not None:
+                rewards_for_returns = rewards + robust_bonus
+
             returns = []
-            running_return = next_values[-1] * (1 - dones[-1])
+            running_return = next_values[-1].squeeze() * (1 - dones[-1])
             
-            for reward, done in zip(reversed(rewards), reversed(dones)):
+            for reward, done in zip(reversed(rewards_for_returns), reversed(dones)):
                 running_return = reward + self.gamma * running_return * (1 - done) 
                 returns.insert(0, running_return)
             
-            advantages = []
-            running_advantage = 0
-            for ret, value in zip(reversed(returns), reversed(values)):
-                running_advantage = ret - value
-                advantages.insert(0, running_advantage)
-            
-            returns = torch.FloatTensor(returns).to(self.device)
-            advantages = torch.FloatTensor(advantages).to(self.device) 
+            returns = torch.stack(returns).view(-1)
+            advantages = returns - values.view(-1)
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
-        if self.robust_params is not None:
-            advantages = advantages + u_star * self.gamma
 
         old_action_probs, _ = self.actor_critic(states)
         old_action_probs = old_action_probs.detach()
