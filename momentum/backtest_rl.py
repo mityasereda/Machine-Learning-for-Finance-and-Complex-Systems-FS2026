@@ -31,8 +31,16 @@ def load_data(ticker, from_date, until_date, override=False):
 
 def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=True):
     """Backtest the trained RL model"""
+    granularity = config['backtesting'].get('granularity', 'day')
+
     # Create environment
-    env = TradingEnvironment(df_intra, df_daily, config, consider_market_impact=consider_market_impact)
+    env = TradingEnvironment(
+        df_intra,
+        df_daily,
+        config,
+        consider_market_impact=consider_market_impact,
+        granularity=granularity,
+    )
     
     # Load trained model
     trainer = PPOTrainer(

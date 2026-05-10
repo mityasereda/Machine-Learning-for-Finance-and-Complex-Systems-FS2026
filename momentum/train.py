@@ -44,6 +44,8 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
             }
         )
     
+    granularity = config['backtesting'].get('granularity', 'day')
+
     # Create environment
     env = TradingEnvironment(
         df_intra,
@@ -51,6 +53,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         config,
         consider_market_impact=False,
         robust_params=None,
+        granularity=granularity,
     )
     
     # Get state and action dimensions
