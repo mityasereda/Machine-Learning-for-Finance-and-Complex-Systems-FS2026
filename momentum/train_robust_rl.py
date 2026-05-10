@@ -103,13 +103,14 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         rewards = []
         next_states = []
         dones = []
+        old_log_probs = []
         
         # Create progress bar for steps within episode
         step_pbar = tqdm(range(max_steps), desc=f"Episode {episode + 1}", leave=False)
         
         for step in step_pbar:
             # Select action
-            action = trainer.select_action(state)
+            action, log_prob = trainer.sample_action(state)
             
             # Take action
             next_state, reward, done, _ = env.step(action)
@@ -120,6 +121,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
             rewards.append(reward)
             next_states.append(next_state)
             dones.append(done)
+            old_log_probs.append(log_prob)
             
             state = next_state
             episode_reward += reward
@@ -139,7 +141,8 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
             np.array(actions),
             np.array(rewards),
             np.array(next_states),
-            np.array(dones)
+            np.array(dones),
+            np.array(old_log_probs)
         )
         
         # Log metrics to wandb if enabled

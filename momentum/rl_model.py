@@ -3,11 +3,12 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-from torch.distributions import Normal
+from torch.distributions import Independent, Normal, TransformedDistribution
+from torch.distributions.transforms import TanhTransform
 import pickle
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim=256):
+    def __init__(self, state_dim, action_dim, hidden_dim=256, log_std_init=-1.0):
         super(ActorCritic, self).__init__()
         
         # Shared feature extractor
@@ -34,6 +35,8 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1)
         )
+
+        self.log_std = nn.Parameter(torch.full((action_dim,), log_std_init))
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -45,9 +48,9 @@ class ActorCritic(nn.Module):
     
     def forward(self, state):
         features = self.feature_extractor(state)
-        action_probs = self.actor(features)
+        action_mean = self.actor(features)
         value = self.critic(features)
-        return action_probs, value
+        return action_mean, value
 
 class PPOTrainer:
     def __init__(self, state_dim, action_dim, hidden_dim=256, lr=3e-4, gamma=0.99, 
@@ -68,13 +71,31 @@ class PPOTrainer:
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='max', factor=0.5, patience=5
         )
+        self._action_eps = 1e-6
+
+    def _build_policy(self, action_mean):
+        clamped_mean = action_mean.clamp(-1 + self._action_eps, 1 - self._action_eps)
+        latent_mean = torch.atanh(clamped_mean)
+        std = self.actor_critic.log_std.exp().unsqueeze(0).expand_as(latent_mean)
+        base_dist = Independent(Normal(latent_mean, std), 1)
+        return TransformedDistribution(base_dist, [TanhTransform(cache_size=1)])
     
     def select_action(self, state):
-        """Select action from current policy"""
+        """Select deterministic action for evaluation."""
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         with torch.no_grad():
-            action_probs, _ = self.actor_critic(state)
-        return action_probs.squeeze(0).cpu().numpy()
+            action_mean, _ = self.actor_critic(state)
+        return action_mean.squeeze(0).cpu().numpy()
+
+    def sample_action(self, state):
+        """Sample action and log-probability for PPO rollouts."""
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            action_mean, _ = self.actor_critic(state)
+            policy = self._build_policy(action_mean)
+            action = policy.sample()
+            log_prob = policy.log_prob(action)
+        return action.squeeze(0).cpu().numpy(), float(log_prob.item())
     
     def _build_discretized_values(self, next_states, robust_params):
         """Construct the 3-dim value vector v by evaluating the critic at
@@ -187,7 +208,7 @@ class PPOTrainer:
         else:
             raise ValueError(f"Invalid robust type: {robust_type}. Use 'p1N2' or 'p1'.")
     
-    def update(self, states, actions, rewards, next_states, dones):
+    def update(self, states, actions, rewards, next_states, dones, old_log_probs=None):
         """Update policy using PPO algorithm"""
         # Convert to tensors
         states = torch.FloatTensor(states).to(self.device)
@@ -195,6 +216,12 @@ class PPOTrainer:
         rewards = torch.FloatTensor(rewards).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device) 
+        if old_log_probs is None:
+            with torch.no_grad():
+                old_action_mean, _ = self.actor_critic(states)
+                old_log_probs = self._build_policy(old_action_mean).log_prob(actions)
+        else:
+            old_log_probs = torch.FloatTensor(old_log_probs).to(self.device).view(-1)
         
         robust_bonus = None
         if self.robust_params is not None:
@@ -226,10 +253,6 @@ class PPOTrainer:
             advantages = returns - values.view(-1)
             # Normalize advantages
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
-        # Get old action probabilities
-        old_action_probs, _ = self.actor_critic(states)
-        old_action_probs = old_action_probs.detach()
         
         # Update policy for K epochs
         total_loss = 0
@@ -248,21 +271,23 @@ class PPOTrainer:
                 batch_actions = actions[batch_indices]
                 batch_advantages = advantages[batch_indices]
                 batch_returns = returns[batch_indices]
-                batch_old_probs = old_action_probs[batch_indices]
+                batch_old_log_probs = old_log_probs[batch_indices]
                 
-                # Get current action probabilities and values
-                action_probs, values = self.actor_critic(batch_states)
+                # Get current policy and values
+                action_mean, values = self.actor_critic(batch_states)
+                policy = self._build_policy(action_mean)
+                log_probs = policy.log_prob(batch_actions)
                 
-                # Calculate ratio
-                ratio = action_probs / (batch_old_probs + 1e-8)
+                # Calculate PPO likelihood ratio
+                ratio = torch.exp(log_probs - batch_old_log_probs)
                 
                 # Calculate surrogate losses
-                surr1 = ratio * batch_advantages.unsqueeze(1)
-                surr2 = torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon) * batch_advantages.unsqueeze(1)
+                surr1 = ratio * batch_advantages
+                surr2 = torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon) * batch_advantages
                 
                 # Calculate actor and critic losses
                 actor_loss = -torch.min(surr1, surr2).mean()
-                critic_loss = F.mse_loss(values.squeeze(), batch_returns)
+                critic_loss = F.mse_loss(values.view(-1), batch_returns)
                 
                 # Calculate total loss
                 loss = actor_loss + 0.5 * critic_loss
@@ -286,4 +311,5 @@ class PPOTrainer:
     
     def load(self, path):
         """Load model"""
-        self.actor_critic.load_state_dict(torch.load(path, weights_only=True)) 
+        state_dict = torch.load(path, weights_only=True)
+        self.actor_critic.load_state_dict(state_dict, strict=False) 
