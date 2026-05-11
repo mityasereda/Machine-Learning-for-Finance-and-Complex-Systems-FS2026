@@ -74,8 +74,8 @@ if __name__ == "__main__":
         "JNJ", "KO", "T", "INTC", "XOM"          # momentum-challenged
     ]
 
-    from_date  = "2022-05-09"
-    until_date = "2022-11-09"
+    from_date  = "2022-06-09"
+    until_date = "2022-12-09"
 
     for ticker in tickers:
         if os.path.exists(f'results/{ticker}_momentum_stats_no_impact.csv'):

@@ -2,10 +2,9 @@
 .vscode/
 __pycache__/
 */__pycache__/
+wandb/
 
-*.pkl
-*.pth
-*.npy
+
 # Local WRDS extracts 
 data/wrds/raw/
 data/wrds/processed/

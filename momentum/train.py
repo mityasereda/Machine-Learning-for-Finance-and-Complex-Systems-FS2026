@@ -183,7 +183,7 @@ def main():
     config = load_config()
     set_seed(config.get('seed', 42))
     assets = [
-        "META", "MSFT", "MTUM", "T"
+        "META", "MSFT", "SPY"
     ]
     # assets = ['SPY']
     from_date = '2021-05-09'

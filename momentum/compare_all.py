@@ -102,8 +102,8 @@ def final_backtest_rl(ticker, model_path):
     config = load_config()
     
     # Load data for backtesting period
-    from_date = '2022-05-09'
-    until_date = '2022-11-09'
+    from_date = '2022-06-09'
+    until_date = '2022-12-09'
     df_intra, df_daily = load_data(ticker, from_date, until_date, override=True)
     if df_intra.empty or df_daily.empty:
         print(f"Warning: API returned empty data for {ticker} from {from_date} to {until_date}")
@@ -196,8 +196,8 @@ if __name__ == "__main__":
     # folder = "robust_models"
     # folder = "ball_models"
     # folder = "models"
-        from_date  = "2022-05-09"
-        until_date = "2022-11-09"
+        from_date  = "2022-06-09"
+        until_date = "2022-12-09"
         # enumerate all files in models folder
         for file in os.listdir(folder):
             if file.endswith('.pth'):

@@ -142,12 +142,33 @@ def _get_wrds_file_path(kind, ticker):
     return root_dir / DATA_CONFIG.get(subdir_key) / f"{ticker}_{suffix}.{file_format}"
 
 
-def _get_wrds_data(ticker):
+def _filter_frame_by_date(df, from_date=None, until_date=None):
+    if df.empty or (from_date is None and until_date is None):
+        return df
+
+    filtered = df.copy()
+    caldt = pd.to_datetime(filtered['caldt'])
+
+    if from_date is not None:
+        start_ts = pd.to_datetime(from_date)
+        filtered = filtered.loc[caldt >= start_ts]
+        caldt = pd.to_datetime(filtered['caldt'])
+
+    if until_date is not None:
+        end_exclusive = pd.to_datetime(until_date) + pd.Timedelta(days=1)
+        filtered = filtered.loc[caldt < end_exclusive]
+
+    return filtered.copy()
+
+
+def _get_wrds_data(ticker, from_date=None, until_date=None):
     intraday_path = _get_wrds_file_path('intraday', ticker)
     daily_path = _get_wrds_file_path('daily', ticker)
 
     df_intra = _normalize_intraday_frame(_load_local_frame(intraday_path, parse_dates=['caldt']))
     df_daily = _normalize_daily_frame(_load_local_frame(daily_path, parse_dates=['caldt']))
+    df_intra = _filter_frame_by_date(df_intra, from_date, until_date)
+    df_daily = _filter_frame_by_date(df_daily, from_date, until_date)
     return df_intra, df_daily
 
 
@@ -245,7 +266,7 @@ def fetch_polygon_dividends(ticker):
 
 def get_data(ticker, from_date, until_date):
     if DATA_PROVIDER == 'wrds':
-        return _get_wrds_data(ticker)
+        return _get_wrds_data(ticker, from_date, until_date)
     if DATA_PROVIDER != 'polygon':
         raise ValueError(f"Unsupported data provider: {DATA_PROVIDER}")
 
