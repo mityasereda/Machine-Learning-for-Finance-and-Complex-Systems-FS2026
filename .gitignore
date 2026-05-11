@@ -3,6 +3,9 @@
 __pycache__/
 */__pycache__/
 
+*.pkl
+*.pth
+*.npy
 # Local WRDS extracts 
 data/wrds/raw/
 data/wrds/processed/
