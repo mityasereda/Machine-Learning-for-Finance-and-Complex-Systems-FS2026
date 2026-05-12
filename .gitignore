@@ -4,6 +4,8 @@ __pycache__/
 */__pycache__/
 wandb/
 
+.DS_Store
+.venv
 
 # Local WRDS extracts 
 data/wrds/raw/
