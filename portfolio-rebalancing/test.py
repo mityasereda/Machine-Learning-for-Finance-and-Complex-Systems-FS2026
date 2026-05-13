@@ -60,16 +60,18 @@ def backtest_rl(config, tickers, from_date, until_date, model_path, consider_mar
     
     portfolio_values = np.array(portfolio_values)
     daily_returns = np.array(daily_returns)
-    
-    cumulative_returns = (portfolio_values / portfolio_values[0]) - 1
+    initial_portfolio_value = cash
+    cumulative_returns = (portfolio_values / initial_portfolio_value) - 1
     
     sharpe_ratio = np.sqrt(252) * np.mean(daily_returns) / (np.std(daily_returns) + 1e-8)
-    
-    peak = np.maximum.accumulate(portfolio_values)
-    drawdown = (portfolio_values - peak) / peak
+
+    portfolio_path = np.concatenate(([initial_portfolio_value], portfolio_values))
+    peak = np.maximum.accumulate(portfolio_path)
+    drawdown = (portfolio_path - peak) / peak
     max_drawdown = np.min(drawdown) 
     
     return {
+        'initial_portfolio_value': initial_portfolio_value,
         'portfolio_values': portfolio_values,
         'positions_by_ticker': positions_by_ticker,
         'daily_returns': daily_returns,
@@ -80,9 +82,10 @@ def backtest_rl(config, tickers, from_date, until_date, model_path, consider_mar
     }
 
 def final_backtest_rl(tickers, model_path, 
-                      from_date='2022-05-09', until_date='2022-11-09', volume=100000):
+                      from_date='2022-06-09', until_date='2022-12-09', volume=100000):
     model_name = os.path.basename(model_path)
     model_name = model_name.split('.')[0]
+    date_tag = f"{from_date}_to_{until_date}_aligned_start_adverse_impact"
     
     config = load_config()
     print(f"Setting volume in final_backtest_rl to: {volume}")
@@ -91,18 +94,18 @@ def final_backtest_rl(tickers, model_path,
     
     os.makedirs('backtest_rl_results', exist_ok=True)
     
-    file1 = f'backtest_rl_results/{model_name}_no_impact_{volume}.pkl' 
-    file2 = f'backtest_rl_results/{model_name}_with_impact_{volume}.pkl'
-    if not os.path.exists(file1) and not os.path.exists(file2):  
+    file1 = f'backtest_rl_results/{model_name}_no_impact_{date_tag}_{volume}.pkl' 
+    file2 = f'backtest_rl_results/{model_name}_with_impact_{date_tag}_{volume}.pkl'
+    if not (os.path.exists(file1) and os.path.exists(file2)):  
         print("Running backtest without market impact...")
         results_no_impact = backtest_rl(config, tickers, from_date, until_date, model_path, consider_market_impact=False)
         
         print("\nRunning backtest with market impact...")
         results_with_impact = backtest_rl(config, tickers, from_date, until_date, model_path, consider_market_impact=True)
         
-        with open(f'backtest_rl_results/{model_name}_no_impact_{volume}.pkl', 'wb') as f:
+        with open(file1, 'wb') as f:
             pickle.dump(results_no_impact, f)
-        with open(f'backtest_rl_results/{model_name}_with_impact_{volume}.pkl', 'wb') as f:
+        with open(file2, 'wb') as f:
             pickle.dump(results_with_impact, f)
     else:
         print(f"Loading cached results for volume: {volume}")
@@ -115,7 +118,7 @@ def final_backtest_rl(tickers, model_path,
     plt.figure(figsize=(12, 6))
     
     env = TradingEnvironment(config, initial_cash=volume, tickers=tickers, from_date=from_date, until_date=until_date)
-    dates = env.days[env.lookback_period:env.lookback_period + len(results_no_impact['portfolio_values'])]
+    dates = env.days[env.start_day_idx:env.start_day_idx + len(results_no_impact['portfolio_values'])]
     
     plt.plot(dates, results_no_impact['portfolio_values'], label='Without Market Impact')
     plt.plot(dates, results_with_impact['portfolio_values'], label='With Market Impact')
@@ -135,7 +138,7 @@ def final_backtest_rl(tickers, model_path,
     plt.xticks(rotation=45)
     
     plt.tight_layout()
-    plt.savefig(f'backtest_rl_results/{model_name}_portfolio_comparison_{volume}.png')
+    plt.savefig(f'backtest_rl_results/new_{model_name}_portfolio_comparison_{date_tag}_{volume}.png')
     plt.close()
     
     plt.figure(figsize=(14, 8))
@@ -152,7 +155,7 @@ def final_backtest_rl(tickers, model_path,
     plt.xticks(rotation=45)
     
     plt.tight_layout()
-    plt.savefig(f'backtest_rl_results/{model_name}_allocations_{volume}.png')
+    plt.savefig(f'backtest_rl_results/new_{model_name}_allocations_{date_tag}_{volume}.png')
     plt.close()
     
     comparison_results = {
@@ -201,10 +204,10 @@ if __name__ == "__main__":
     config = load_config()
     set_seed(config.get('seed', 42))
 
-    test_from_date = '2022-05-09'
-    test_until_date = '2022-11-09'
+    test_from_date = '2022-06-09'
+    test_until_date = '2022-12-09'
     
-    volumes = [100000, 1000000, 2000000, 3000000, 4000000, 5000000]
+    volumes =  [1_000_000] #[100000, 1000000, 2000000, 3000000, 4000000, 5000000]
     for volume in volumes:
         config = load_config()
         config['backtesting']['initial_aum'] = volume
@@ -215,7 +218,10 @@ if __name__ == "__main__":
             print("No models directory found.")
             exit(1)
         
-        model_files = [f for f in os.listdir('models') if f.endswith('.pth')]
+        model_files = sorted(
+            f for f in os.listdir('models')
+            if f.endswith('.pth') and f.startswith('SPY_TLT_GLD_EFA_VNQ_best_model_')
+        )
         
         if not model_files:
             print("No model files found in the models directory.")
@@ -224,22 +230,7 @@ if __name__ == "__main__":
         for model_file in model_files:
             model_path = os.path.join('models', model_file)
             
-            model_name = os.path.basename(model_path)
-            model_name = model_name.split('.')[0]
-            saved_figure = f'backtest_rl_results/{model_name}_portfolio_comparison_{volume}.png'
-            
-            model_name_parts = model_file.split('.')[0].split('_')
-            
-            if 'META_MSFT_MTUM_T' in model_file:
-                tickers = ['META', 'MSFT', 'MTUM', 'T']
-            elif 'SPY_TLT_GLD_EFA_VNQ' in model_file:
-                tickers = ['SPY', 'TLT', 'GLD', 'EFA', 'VNQ']
-            elif len(model_name_parts) >= 1 and model_name_parts[0] in ['SPY', 'META', 'MSFT', 'MTUM', 'T', 'TLT', 'GLD', 'EFA', 'VNQ']:
-                tickers = [model_name_parts[0]]
-            else:
-                print(f"Could not identify tickers for model: {model_file}")
-                tickers_input = input("Please enter tickers (comma-separated, e.g., SPY,TLT,GLD): ")
-                tickers = [t.strip() for t in tickers_input.split(',')]
+            tickers = ['SPY', 'TLT', 'GLD', 'EFA', 'VNQ']
             
             print(f"\nTesting model: {model_file} with tickers: {tickers}")
             try:

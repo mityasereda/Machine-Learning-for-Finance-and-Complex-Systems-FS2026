@@ -22,9 +22,15 @@ class TradingEnvironment(gym.Env):
                  from_date='2024-01-01', until_date='2024-12-31', robust_params=None):
         super(TradingEnvironment, self).__init__()
 
+        self.lookback_period = config['backtesting'].get('lookback_period', 30)
+        self.requested_from_date = pd.to_datetime(from_date).date()
+        history_from_date = (
+            pd.to_datetime(from_date) - pd.Timedelta(days=max(self.lookback_period * 3, 45))
+        ).strftime('%Y-%m-%d')
+
         self.data = {}
         for ticker in tickers:
-            df_intra, df_daily = load_data(ticker, from_date, until_date)
+            df_intra, df_daily = load_data(ticker, history_from_date, until_date)
             self.data[ticker] = {
                 'df_intra': df_intra,
                 'df_daily': df_daily
@@ -35,9 +41,13 @@ class TradingEnvironment(gym.Env):
         self.config = config
         self.initial_cash = initial_cash
         self.ticker = ticker
-        self.lookback_period = config['backtesting'].get('lookback_period', 30)
         
         self.days = sorted(df_intra['day'].unique())
+        self.start_day_idx = next(
+            (idx for idx, day in enumerate(self.days) if day >= self.requested_from_date),
+            0
+        )
+        self.start_day_idx = max(self.start_day_idx, self.lookback_period)
         
         self.action_space = spaces.Box(
             low=0.0, high=1.0, shape=(self.num_tickers,), dtype=np.float32
@@ -73,7 +83,7 @@ class TradingEnvironment(gym.Env):
         self.reset()
     
     def reset(self):
-        self.current_day_idx = self.lookback_period
+        self.current_day_idx = self.start_day_idx
         self.cash = self.initial_cash
         self.positions = {ticker: 0 for ticker in self.data.keys()}
         self.entry_prices = {ticker: 0 for ticker in self.data.keys()}
@@ -132,6 +142,7 @@ class TradingEnvironment(gym.Env):
             prev_portfolio_value += position * prev_price
         
         info = {'portfolio_value': 0, 'cash': self.cash, 'positions': {}, 'returns': 0, 'volatility': 0}
+        total_position_change_ratio = 0.0
         
         for i, ticker in enumerate(self.data.keys()):
             current_data = self.data[ticker]['df_intra'][self.data[ticker]['df_intra']['day'] == current_day]
@@ -142,6 +153,8 @@ class TradingEnvironment(gym.Env):
             max_shares = int(self.initial_cash / current_price)
             target_shares = int(action[i] * max_shares)
             position_change = target_shares - self.positions[ticker]
+            if max_shares > 0:
+                total_position_change_ratio += abs(position_change) / max_shares
             
             effective_price = current_price
             if self.consider_market_impact and abs(position_change) > 0:
@@ -214,16 +227,6 @@ class TradingEnvironment(gym.Env):
         returns = (portfolio_value - prev_portfolio_value) / prev_portfolio_value
         volatility = np.std([self.portfolio_value[-1] / p - 1 for p in self.portfolio_value[-20:]])
         reward = returns / (volatility + 1e-8)
-        
-        total_position_change_ratio = 0
-        for i, ticker in enumerate(self.data.keys()):
-            current_data = self.data[ticker]['df_intra'][self.data[ticker]['df_intra']['day'] == current_day]
-            current_price = current_data['close'].iloc[-1]
-            max_shares = int(self.initial_cash / current_price)
-            target_shares = int(action[i] * max_shares)
-            position_change = target_shares - self.positions[ticker]
-            total_position_change_ratio += abs(position_change) / max_shares
-        
         reward -= 0.001 * total_position_change_ratio
         
         self.current_day_idx += 1

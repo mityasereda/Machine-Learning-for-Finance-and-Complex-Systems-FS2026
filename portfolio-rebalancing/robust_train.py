@@ -163,25 +163,31 @@ def main():
     config = load_config()
     set_seed(config.get('seed', 42))
 
-    # Robust params following Theorem 3.5 from the paper.
-    # "p1N2" — Theorem 3.5(b): elliptic uncertainty set (p=1, N=2)
-    # "p1"   — Theorem 3.5(a): ball uncertainty set (p=1, N=1)
-    robust_params = {
-        "robust_type": "p1",
+    base_robust_params = {
         "beta": 1e-4,
         "epsilon": 1e-3,
         "u_dim": 3,
-        # Foci for buy/sell (from paper Appendix E.3, page 41):
         "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
         "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
     }
-    
+
+    robust_types = [
+        "p1",    # Theorem 3.5(a): ball uncertainty set (p=1, N=1)
+        "p1N2",  # Theorem 3.5(b): elliptic uncertainty set (p=1, N=2)
+    ]
+
     tickers = ["SPY", "TLT", "GLD", "EFA", "VNQ"]
     from_date = "2021-05-09"
     until_date = "2022-05-09"
-    
-    model_path = train(config, tickers, from_date, until_date, robust_params)
-    print(f"Model saved to {model_path}")
+
+    for robust_type in robust_types:
+        robust_params = {
+            **base_robust_params,
+            "robust_type": robust_type,
+        }
+        print(f"\nTraining robust model with robust_type={robust_type}")
+        model_path = train(config, tickers, from_date, until_date, robust_params)
+        print(f"Model saved to {model_path}")
 
 if __name__ == "__main__":
     main() 

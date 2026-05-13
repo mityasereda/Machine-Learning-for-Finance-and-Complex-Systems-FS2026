@@ -53,6 +53,12 @@ class MarketImpactCalculator:
             return None
 
         df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['price'] = pd.to_numeric(df['price'], errors='coerce')
+        df['size'] = pd.to_numeric(df['size'], errors='coerce')
+        df = df.dropna(subset=['timestamp', 'price', 'size'])
+        df = df[(df['price'] > 0) & (df['size'] > 0)].copy()
+        if df.empty:
+            return None
         if 'value' not in df.columns:
             df['value'] = df['price'] * df['size']
         return df
@@ -138,13 +144,29 @@ class MarketImpactCalculator:
     def calculate_volume_profile(self, trades_df, num_bins=20):
         if trades_df is None or trades_df.empty:
             return None, None
-            
-        price_min = trades_df['price'].min()
-        price_max = trades_df['price'].max()
+
+        trades_df = trades_df.copy()
+        trades_df['price'] = pd.to_numeric(trades_df['price'], errors='coerce')
+        trades_df['size'] = pd.to_numeric(trades_df['size'], errors='coerce')
+        trades_df = trades_df.dropna(subset=['price', 'size'])
+        trades_df = trades_df[(trades_df['price'] > 0) & (trades_df['size'] > 0)]
+        if trades_df.empty:
+            return None, None
+
+        price_min = float(trades_df['price'].min())
+        price_max = float(trades_df['price'].max())
+        if not np.isfinite(price_min) or not np.isfinite(price_max):
+            return None, None
+        if price_min == price_max:
+            price_min *= 0.999
+            price_max *= 1.001
         price_range = np.linspace(price_min * 0.99, price_max * 1.01, num_bins + 1)
         
         trades_df['price_bin'] = pd.cut(trades_df['price'], bins=price_range)
         volume_profile = trades_df.groupby('price_bin', observed=False)['size'].sum()
+        volume_profile = pd.to_numeric(volume_profile, errors='coerce').dropna()
+        if volume_profile.empty:
+            return None, None
         
         return price_range, volume_profile
 
@@ -162,24 +184,51 @@ class MarketImpactCalculator:
             return price
             
         try:
-            if trades_df['price'].isna().any() or trades_df['size'].isna().any():
+            trades_df = trades_df.copy()
+            trades_df['price'] = pd.to_numeric(trades_df['price'], errors='coerce')
+            trades_df['size'] = pd.to_numeric(trades_df['size'], errors='coerce')
+            trades_df = trades_df.dropna(subset=['price', 'size'])
+            trades_df = trades_df[(trades_df['price'] > 0) & (trades_df['size'] > 0)]
+            if trades_df.empty:
                 if self.fallback_model:
                     return self.calculate_fallback_impact(price, volume, side)
                 return price
                 
-            avg_trade_size = trades_df['size'].mean()
-            total_volume = trades_df['size'].sum()
-            price_volatility = trades_df['price'].std() / trades_df['price'].mean()
+            avg_trade_size = float(trades_df['size'].mean())
+            total_volume = float(trades_df['size'].sum())
+            mean_price = float(trades_df['price'].mean())
+            price_std = float(trades_df['price'].std())
+            if not np.isfinite(avg_trade_size) or avg_trade_size <= 0 or not np.isfinite(total_volume) or total_volume <= 0:
+                if self.fallback_model:
+                    return self.calculate_fallback_impact(price, volume, side)
+                return price
+            if not np.isfinite(mean_price) or mean_price <= 0 or not np.isfinite(price_std):
+                if self.fallback_model:
+                    return self.calculate_fallback_impact(price, volume, side)
+                return price
+            price_volatility = price_std / mean_price
             
             price_range, volume_profile = self.calculate_volume_profile(trades_df)
-            if price_range is None:
+            if price_range is None or volume_profile is None or volume_profile.empty:
                 if self.fallback_model:
                     return self.calculate_fallback_impact(price, volume, side)
                 return price
                 
             price_bin = pd.cut([price], bins=price_range)[0]
-            volume_in_bin = volume_profile.get(price_bin, volume_profile.mean())
-            volume_factor = volume_in_bin / volume_profile.mean()
+            volume_profile_mean = pd.to_numeric(pd.Series([volume_profile.mean()]), errors='coerce').iloc[0]
+            if pd.isna(price_bin) or not np.isfinite(volume_profile_mean) or volume_profile_mean <= 0:
+                if self.fallback_model:
+                    return self.calculate_fallback_impact(price, volume, side)
+                return price
+
+            volume_in_bin = volume_profile.get(price_bin, np.nan)
+            if pd.isna(volume_in_bin):
+                volume_in_bin = volume_profile_mean
+            volume_in_bin = pd.to_numeric(pd.Series([volume_in_bin]), errors='coerce').iloc[0]
+            if not np.isfinite(volume_in_bin) or volume_in_bin <= 0:
+                volume_in_bin = volume_profile_mean
+
+            volume_factor = volume_in_bin / volume_profile_mean
             
             volume_ratio = volume / total_volume
             base_impact = volume_ratio * price_volatility * 100
@@ -189,7 +238,9 @@ class MarketImpactCalculator:
                 size_ratio = volume / avg_trade_size
                 size_premium = np.log10(size_ratio) * 0.002
             
-            liquidity_factor = 1 + (1 - volume_factor) * 0.8
+            # Keep impact adverse-only: high local liquidity can reduce slippage,
+            # but it should never flip the sign and improve execution.
+            liquidity_factor = max(0.0, 1 + (1 - volume_factor) * 0.8)
             impact = (base_impact + size_premium) * liquidity_factor
             
             if volume > total_volume * self.impact_threshold:
@@ -198,7 +249,7 @@ class MarketImpactCalculator:
                 non_linear_impact = excess_ratio * 0.01
                 impact += non_linear_impact
             
-            impact = min(impact, self.max_impact)
+            impact = max(0.0, min(impact, self.max_impact))
             impacted_price = price * (1 + impact) if side == 'buy' else price * (1 - impact)
             
             return impacted_price if not np.isnan(impacted_price) and impacted_price > 0 else price
