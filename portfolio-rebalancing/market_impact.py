@@ -33,6 +33,13 @@ class MarketImpactCalculator:
         self.wrds_trades_subdir = wrds_trades_subdir
         self.wrds_file_format = wrds_file_format.lower()
 
+    @staticmethod
+    def _safe_scalar(value):
+        coerced = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
+        if pd.isna(coerced):
+            return None
+        return float(coerced)
+
     def _load_wrds_trade_file(self, ticker, timestamp):
         if self.wrds_root_dir is None:
             return None
@@ -59,6 +66,8 @@ class MarketImpactCalculator:
         df = df[(df['price'] > 0) & (df['size'] > 0)].copy()
         if df.empty:
             return None
+        df['price'] = df['price'].astype(float)
+        df['size'] = df['size'].astype(float)
         if 'value' not in df.columns:
             df['value'] = df['price'] * df['size']
         return df
@@ -152,10 +161,12 @@ class MarketImpactCalculator:
         trades_df = trades_df[(trades_df['price'] > 0) & (trades_df['size'] > 0)]
         if trades_df.empty:
             return None, None
+        trades_df['price'] = trades_df['price'].astype(float)
+        trades_df['size'] = trades_df['size'].astype(float)
 
-        price_min = float(trades_df['price'].min())
-        price_max = float(trades_df['price'].max())
-        if not np.isfinite(price_min) or not np.isfinite(price_max):
+        price_min = self._safe_scalar(trades_df['price'].min())
+        price_max = self._safe_scalar(trades_df['price'].max())
+        if price_min is None or price_max is None or not np.isfinite(price_min) or not np.isfinite(price_max):
             return None, None
         if price_min == price_max:
             price_min *= 0.999
@@ -193,16 +204,18 @@ class MarketImpactCalculator:
                 if self.fallback_model:
                     return self.calculate_fallback_impact(price, volume, side)
                 return price
+            trades_df['price'] = trades_df['price'].astype(float)
+            trades_df['size'] = trades_df['size'].astype(float)
                 
-            avg_trade_size = float(trades_df['size'].mean())
-            total_volume = float(trades_df['size'].sum())
-            mean_price = float(trades_df['price'].mean())
-            price_std = float(trades_df['price'].std())
-            if not np.isfinite(avg_trade_size) or avg_trade_size <= 0 or not np.isfinite(total_volume) or total_volume <= 0:
+            avg_trade_size = self._safe_scalar(trades_df['size'].mean())
+            total_volume = self._safe_scalar(trades_df['size'].sum())
+            mean_price = self._safe_scalar(trades_df['price'].mean())
+            price_std = self._safe_scalar(trades_df['price'].std())
+            if avg_trade_size is None or total_volume is None or not np.isfinite(avg_trade_size) or avg_trade_size <= 0 or not np.isfinite(total_volume) or total_volume <= 0:
                 if self.fallback_model:
                     return self.calculate_fallback_impact(price, volume, side)
                 return price
-            if not np.isfinite(mean_price) or mean_price <= 0 or not np.isfinite(price_std):
+            if mean_price is None or price_std is None or not np.isfinite(mean_price) or mean_price <= 0 or not np.isfinite(price_std):
                 if self.fallback_model:
                     return self.calculate_fallback_impact(price, volume, side)
                 return price
@@ -215,7 +228,7 @@ class MarketImpactCalculator:
                 return price
                 
             price_bin = pd.cut([price], bins=price_range)[0]
-            volume_profile_mean = pd.to_numeric(pd.Series([volume_profile.mean()]), errors='coerce').iloc[0]
+            volume_profile_mean = self._safe_scalar(volume_profile.mean())
             if pd.isna(price_bin) or not np.isfinite(volume_profile_mean) or volume_profile_mean <= 0:
                 if self.fallback_model:
                     return self.calculate_fallback_impact(price, volume, side)
@@ -224,7 +237,7 @@ class MarketImpactCalculator:
             volume_in_bin = volume_profile.get(price_bin, np.nan)
             if pd.isna(volume_in_bin):
                 volume_in_bin = volume_profile_mean
-            volume_in_bin = pd.to_numeric(pd.Series([volume_in_bin]), errors='coerce').iloc[0]
+            volume_in_bin = self._safe_scalar(volume_in_bin)
             if not np.isfinite(volume_in_bin) or volume_in_bin <= 0:
                 volume_in_bin = volume_profile_mean
 

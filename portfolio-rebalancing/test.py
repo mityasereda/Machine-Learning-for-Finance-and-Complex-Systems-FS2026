@@ -85,7 +85,7 @@ def final_backtest_rl(tickers, model_path,
                       from_date='2022-06-09', until_date='2022-12-09', volume=100000):
     model_name = os.path.basename(model_path)
     model_name = model_name.split('.')[0]
-    date_tag = f"{from_date}_to_{until_date}_aligned_start_adverse_impact"
+    date_tag = f"{from_date}_to_{until_date}_aligned_start_adverse_impact_na_hardened"
     
     config = load_config()
     print(f"Setting volume in final_backtest_rl to: {volume}")
