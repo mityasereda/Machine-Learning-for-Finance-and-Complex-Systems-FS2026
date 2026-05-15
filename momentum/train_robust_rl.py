@@ -108,7 +108,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         # Create progress bar for steps within episode
         step_pbar = tqdm(range(max_steps), desc=f"Episode {episode + 1}", leave=False)
         
-        for step in step_pbar:
+        for _ in step_pbar:
             # Select action
             action, log_prob = trainer.sample_action(state)
             
@@ -193,8 +193,11 @@ def main():
         "beta": 1e-4,
         "epsilon": 1e-3,
         "u_dim": 3,
-        "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
-        "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
+        "focus_buy":   [-1.5e-5, 0,  1.5e-5],
+        "focus_buy_2": [-4.5e-5, 0,  4.5e-5],
+        "focus_sell":  [ 1.5e-5, 0, -1.5e-5],
+        "focus_sell_2":[ 4.5e-5, 0, -4.5e-5]
+
     }
 
     assets = [

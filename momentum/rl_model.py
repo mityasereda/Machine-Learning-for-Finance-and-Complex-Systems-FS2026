@@ -5,7 +5,6 @@ import torch.nn.functional as F
 import numpy as np
 from torch.distributions import Independent, Normal, TransformedDistribution
 from torch.distributions.transforms import TanhTransform
-import pickle
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=256, log_std_init=-1.0):
@@ -53,14 +52,14 @@ class ActorCritic(nn.Module):
         return action_mean, value
 
 class PPOTrainer:
-    def __init__(self, state_dim, action_dim, hidden_dim=256, lr=3e-4, gamma=0.99, 
+    def __init__(self, state_dim, action_dim, hidden_dim=256, lr=3e-4, gamma=0.99,
                  epsilon=0.2, epochs=10, batch_size=64, robust_params=None):
         self.state_dim = state_dim
-        self.action_dim = action_dim 
+        self.action_dim = action_dim
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.actor_critic = ActorCritic(state_dim, action_dim, hidden_dim).to(self.device)
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=lr)
-        
+
         self.gamma = gamma
         self.epsilon = epsilon
         self.epochs = epochs
@@ -138,19 +137,18 @@ class PPOTrainer:
         if robust_type == "p1N2":
             # Theorem 3.5(b): p=1, N=2 (elliptic uncertainty set)
             # Foci: u1 is action-dependent (buy/sell), u2 = 0
-            focus_buy = torch.tensor(
-                robust_params["focus_buy"], dtype=torch.float32, device=self.device
-            )
-            focus_sell = torch.tensor(
-                robust_params["focus_sell"], dtype=torch.float32, device=self.device
-            )
+            # Assumes that ||u_1||_1<\beta
+            focus_buy   = torch.tensor(robust_params["focus_buy"],   dtype=torch.float32, device=self.device)
+            focus_buy_2 = torch.tensor(robust_params["focus_buy_2"], dtype=torch.float32, device=self.device)
+            focus_sell  = torch.tensor(robust_params["focus_sell"],  dtype=torch.float32, device=self.device)
+            focus_sell_2= torch.tensor(robust_params["focus_sell_2"],dtype=torch.float32, device=self.device)
 
-            # Select focus based on action sign: actions > 0 -> buy, <= 0 -> sell
+            # Select foci based on action sign: actions > 0 -> buy, <= 0 -> sell
             is_buy = (actions > 0).float()  # [batch, 1]
             if is_buy.dim() == 1:
                 is_buy = is_buy.unsqueeze(1)
-            u1 = is_buy * focus_buy.unsqueeze(0) + (1 - is_buy) * focus_sell.unsqueeze(0)  # [batch, 3]
-            u2 = torch.zeros_like(u1)  # [batch, 3]
+            u1 = is_buy * focus_buy.unsqueeze(0)   + (1 - is_buy) * focus_sell.unsqueeze(0)   # [batch, 3]
+            u2 = is_buy * focus_buy_2.unsqueeze(0) + (1 - is_buy) * focus_sell_2.unsqueeze(0) # [batch, 3]
 
             # Midpoint of foci
             midpoint = (u1 + u2) / 2  # [batch, 3]
@@ -180,9 +178,8 @@ class PPOTrainer:
             # u* = midpoint - scale * sign(v + mu*) * indicator
             u_star = midpoint - scale * sign_v * indicator  # [batch, 3]
 
-            # Return scalar correction: v^T u* per sample
             correction = torch.sum(v * u_star, dim=1)  # [batch]
-            return correction
+            return correction, u_star
 
         elif robust_type == "p1":
             # Theorem 3.5(a): N=1, p=1 (q=inf), u1=0 (ball uncertainty set)
@@ -203,7 +200,7 @@ class PPOTrainer:
             u_star = beta * sign_v * indicator  # [batch, 3]
 
             correction = torch.sum(v * u_star, dim=1)  # [batch]
-            return correction
+            return correction, u_star
 
         else:
             raise ValueError(f"Invalid robust type: {robust_type}. Use 'p1N2' or 'p1'.")
@@ -225,30 +222,29 @@ class PPOTrainer:
         
         robust_bonus = None
         if self.robust_params is not None:
-            # Calculate u^*
-            u_star = self.calculate_u_star(states, actions, next_states, self.robust_params) 
-            robust_bonus = (u_star.reshape(-1) * self.gamma).detach()
-            # save u_star to pickle
-            with open(f'u_star_{self.robust_params["robust_type"]}.pkl', 'wb') as f:
-                pickle.dump(u_star, f) 
+            correction, u_star_vec = self.calculate_u_star(states, actions, next_states, self.robust_params)
+            robust_bonus = (correction.reshape(-1) * self.gamma).detach()
+            # save batch-averaged u* as numpy array for environment to load
+            np.save(f'u_star_{self.robust_params["robust_type"]}.npy',
+                    u_star_vec.mean(dim=0).detach().cpu().numpy())
 
         # Calculate returns and advantages
         with torch.no_grad():
             _, values = self.actor_critic(states)
             _, next_values = self.actor_critic(next_states)
-            
+
             rewards_for_returns = rewards
             if robust_bonus is not None:
                 rewards_for_returns = rewards + robust_bonus
 
-            # Calculate returns
+            # MC returns: preserves the full adversarial signal from the robust correction
             returns = []
             running_return = next_values[-1].squeeze() * (1 - dones[-1])
-            
+
             for reward, done in zip(reversed(rewards_for_returns), reversed(dones)):
-                running_return = reward + self.gamma * running_return * (1 - done) 
+                running_return = reward + self.gamma * running_return * (1 - done)
                 returns.insert(0, running_return)
-            
+
             returns = torch.stack(returns).view(-1)
             advantages = returns - values.view(-1)
             # Normalize advantages
@@ -311,5 +307,5 @@ class PPOTrainer:
     
     def load(self, path):
         """Load model"""
-        state_dict = torch.load(path, weights_only=True)
-        self.actor_critic.load_state_dict(state_dict, strict=False) 
+        state_dict = torch.load(path, map_location=self.device, weights_only=True)
+        self.actor_critic.load_state_dict(state_dict, strict=False)

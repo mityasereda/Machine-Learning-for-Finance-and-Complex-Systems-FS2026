@@ -261,7 +261,7 @@ class TradingEnvironment(gym.Env):
                 robust_type = self.robust_params["robust_type"]
                 distribution = np.array([self.robust_params["beta"], 1-2*self.robust_params["beta"], self.robust_params["beta"]]) 
                 try:
-                    distribution_shift = np.load(f'u_star_{robust_type}.pkl')
+                    distribution_shift = np.load(f'u_star_{robust_type}.npy')
                 except:
                     distribution_shift = - self.robust_params["epsilon"] * np.ones(self.robust_params["u_dim"])
                     distribution_shift[0] +=  self.robust_params["epsilon"] * self.robust_params["u_dim"]
@@ -391,7 +391,7 @@ class TradingEnvironment(gym.Env):
                 robust_type = self.robust_params["robust_type"]
                 distribution = np.array([0.25, 0.5, 0.25]) 
                 try:
-                    distribution_shift = np.load(f'u_star_{robust_type}.pkl')
+                    distribution_shift = np.load(f'u_star_{robust_type}.npy')
                 except:
                     distribution_shift = - self.robust_params["beta"] * np.ones(self.robust_params["u_dim"])
                     distribution_shift[0] +=  self.robust_params["beta"] * self.robust_params["u_dim"]
