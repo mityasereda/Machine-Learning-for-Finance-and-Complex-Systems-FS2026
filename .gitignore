@@ -12,3 +12,7 @@ data/wrds/processed/
 
 momentum/data/
 portfolio-rebalancing/data/
+
+# Result artifacts (regenerable)
+*.pkl
+*.npy
