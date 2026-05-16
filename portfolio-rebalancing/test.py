@@ -59,13 +59,13 @@ def backtest_rl(config, tickers, from_date, until_date, model_path, consider_mar
         state = next_state
     
     portfolio_values = np.array(portfolio_values)
-    daily_returns = np.array(daily_returns)
     initial_portfolio_value = cash
-    cumulative_returns = (portfolio_values / initial_portfolio_value) - 1
-    
-    sharpe_ratio = np.sqrt(252) * np.mean(daily_returns) / (np.std(daily_returns) + 1e-8)
-
     portfolio_path = np.concatenate(([initial_portfolio_value], portfolio_values))
+    period_returns = portfolio_path[1:] / portfolio_path[:-1] - 1
+    cumulative_returns = (portfolio_values / initial_portfolio_value) - 1
+
+    sharpe_ratio = np.sqrt(252) * np.mean(period_returns) / (np.std(period_returns) + 1e-8)
+
     peak = np.maximum.accumulate(portfolio_path)
     drawdown = (portfolio_path - peak) / peak
     max_drawdown = np.min(drawdown) 
@@ -74,7 +74,7 @@ def backtest_rl(config, tickers, from_date, until_date, model_path, consider_mar
         'initial_portfolio_value': initial_portfolio_value,
         'portfolio_values': portfolio_values,
         'positions_by_ticker': positions_by_ticker,
-        'daily_returns': daily_returns,
+        'daily_returns': period_returns,
         'cumulative_returns': cumulative_returns,
         'sharpe_ratio': sharpe_ratio,
         'max_drawdown': max_drawdown,
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     test_from_date = '2022-06-09'
     test_until_date = '2022-12-09'
     
-    volumes =  [1_000_000] #[100000, 1000000, 2000000, 3000000, 4000000, 5000000]
+    volumes =  [100_000_000] #[100000, 1000000, 2000000, 3000000, 4000000, 5000000]
     for volume in volumes:
         config = load_config()
         config['backtesting']['initial_aum'] = volume

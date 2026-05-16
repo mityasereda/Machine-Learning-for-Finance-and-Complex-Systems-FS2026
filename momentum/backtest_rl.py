@@ -75,24 +75,23 @@ def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=T
         # Update state
         state = next_state
     
-    # Calculate performance metrics
+    # Calculate performance metrics from the realized equity curve.
     portfolio_values = np.array(portfolio_values)
-    daily_returns = np.array(daily_returns)
-    
-    # Calculate cumulative returns
-    cumulative_returns = (portfolio_values / portfolio_values[0]) - 1
-    
-    # Calculate Sharpe ratio
-    sharpe_ratio = np.sqrt(252) * np.mean(daily_returns) / (np.std(daily_returns) + 1e-8)
-    
-    # Calculate maximum drawdown
-    peak = np.maximum.accumulate(portfolio_values)
-    drawdown = (portfolio_values - peak) / peak
-    max_drawdown = np.min(drawdown) 
+    initial_portfolio_value = env.initial_cash
+    portfolio_path = np.concatenate(([initial_portfolio_value], portfolio_values))
+    period_returns = portfolio_path[1:] / portfolio_path[:-1] - 1
+
+    cumulative_returns = (portfolio_values / initial_portfolio_value) - 1
+    sharpe_ratio = np.sqrt(252) * np.mean(period_returns) / (np.std(period_returns) + 1e-8)
+
+    peak = np.maximum.accumulate(portfolio_path)
+    drawdown = (portfolio_path - peak) / peak
+    max_drawdown = np.min(drawdown)
     return {
+        'initial_portfolio_value': initial_portfolio_value,
         'portfolio_values': portfolio_values,
         'positions': positions,
-        'daily_returns': daily_returns,
+        'daily_returns': period_returns,
         'cumulative_returns': cumulative_returns,
         'sharpe_ratio': sharpe_ratio,
         'max_drawdown': max_drawdown
@@ -140,7 +139,8 @@ def final_backtest_rl(ticker, model_path):
     spy_returns = df_daily['close'].pct_change().dropna()
     spy_returns = spy_returns[lookback_period:lookback_period + len(results_no_impact['portfolio_values'])]
     spy_cumulative = initial_portfolio_value * (1 + spy_returns).cumprod()
-    plt.plot(x_values, spy_cumulative.values, label='SPY Price', linestyle='--', alpha=0.7)
+    ticker_label = model_name.split('_', 1)[0]
+    plt.plot(x_values, spy_cumulative.values, label=f'{ticker_label} Price', linestyle='--', alpha=0.7)
     
     plt.title('Portfolio Value Comparison')
     plt.xlabel('Trading Days')
@@ -149,7 +149,7 @@ def final_backtest_rl(ticker, model_path):
     plt.grid(True)
     
     plt.tight_layout()
-    plt.savefig(f'backtest_rl_results/{model_name}_comparison.png')
+    plt.savefig(f'backtest_rl_results/new_{model_name}_comparison.png')
     plt.close()
     
     # Create comparison results dictionary
