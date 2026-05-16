@@ -17,7 +17,7 @@ data:
 # Weights & Biases Configuration
 # ============================
 wandb:
-  enabled: true
+  enabled: false
   project: "rl-trading"
   entity: <YOUR_WANDB_ENTITY>
 

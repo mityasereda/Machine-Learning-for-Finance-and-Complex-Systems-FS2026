@@ -193,8 +193,6 @@ def main():
         "beta": 1e-4,
         "epsilon": 1e-3,
         "u_dim": 3,
-        "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
-        "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
     }
     assets = [
         "META", "MSFT",  'SPY' 

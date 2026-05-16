@@ -194,12 +194,13 @@ def main():
     #   "p1"   — Theorem 3.5(a): ball uncertainty set (p=1, N=1)
     robust_params = {
         "robust_type": "p1N2",
-        "beta": 1e-4,               # uncertainty size
-        "epsilon": 1e-3,            # price discretization step delta
-        "u_dim": 3,                 # 2N+1 discretized prices
-        # Foci for buy/sell (from paper Appendix E.3, page 41):
-        "focus_buy":  [0.1 - 1/3, -1/3, -1/3],    # shifts mass toward higher price
-        "focus_sell": [-1/3, -1/3, 0.1 - 1/3],     # shifts mass toward lower price
+        "beta": 1e-4,
+        "epsilon": 1e-3,
+        "u_dim": 3,
+        "focus_buy":   [-1.5e-5, 0,  1.5e-5],
+        "focus_buy_2": [-4.5e-5, 0,  4.5e-5],
+        "focus_sell":  [ 1.5e-5, 0, -1.5e-5],
+        "focus_sell_2":[ 4.5e-5, 0, -4.5e-5],
     }
     assets = [
         "META", "MSFT", 'SPY'

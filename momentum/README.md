@@ -1,71 +1,104 @@
-# Reproducing Instruction
+# Momentum — Robust RL Trading
 
-This repository contains code for reproducing experiments in
+This folder contains the code for training, backtesting, and evaluating robust reinforcement learning trading strategies against a classical momentum benchmark.
 
 ## Install Dependencies
-
-Run the following command to install the dependencies.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Training RL Models
+---
 
-The project offers three types of RL models that can be trained:
+## Pipeline
 
-Train standard PPO reinforcement learning models:
+All commands are run from the `momentum/` directory.
 
-```bash
-python train_rl.py
-```
-
-Train robust reinforcement learning models that handle uncertainty and perturbations:
+### Step 1 — Train all RL models
 
 ```bash
-python train_robust_rl.py
+python train.py
 ```
 
-This model uses the ellipstic uncertainty sets with $N=2$ and $p=1$.
+Trains three model variants for each asset (META, MSFT, SPY):
 
-Train ball-constrained robust reinforcement learning models:
+| Variant | Uncertainty Set | Output Directory |
+|---|---|---|
+| Vanilla PPO | None | `models/` |
+| Robust PPO (Elliptic, p1N2) | Elliptic, N=2, p=1 | `robust_models/` |
+| Robust PPO (Ball, p1) | Ball, p=1 | `ball_models/` |
+
+After each training run, backtesting is performed automatically over the period **2022-06-09 to 2022-12-09**. Results are saved as `.pkl` files in `backtest_rl_results/`.
+
+> To train individual variants only, use `train_robust_rl.py` (elliptic) or `train_ball_rl.py` (ball) instead.
+
+---
+
+### Step 2 — Run momentum benchmark
 
 ```bash
-python train_ball_rl.py
+python backtest_momentum.py
 ```
 
-This model uses the ball-constrained uncertainty sets.
+Backtests the classical momentum strategy (breakout + volatility-targeted position sizing) with and without market impact. Saves results to `results/{ticker}_momentum_stats_{no,with}_impact.csv`.
 
-## Backtesting Models
+---
 
-After completing training of all models, we provide the backtesting scrip
+### Step 3 — Present results
+
+**Full strategy comparison (plots + CSV statistics):**
+```bash
+python comparison_presentation.py
+```
+
+Outputs per-asset comparison plots and a unified statistics CSV:
+
+| Output | Description |
+|---|---|
+| `results/{ticker}_strategy_comparison.png` | Cumulative return plot: all strategies, with/without market impact |
+| `results/strategy_statistics.csv` | Total return, Sharpe ratio, max drawdown, annualised volatility for every strategy × impact mode |
+
+**Quick RL-only summary table:**
+```bash
+python backtest_rl_results/read_results.py
+```
+
+Aggregates all RL backtest pkl files into a wide-format CSV at `backtest_rl_results/rl_model_comparison.csv`.
+
+---
+
+### Optional — Beta grid search (Robust Elliptic only)
 
 ```bash
-python compare_all.py
+python gridsearch/beta_gridsearch.py
 ```
 
-We also provide the pre-trained models and the becktesting results.
+Trains the p1N2 model across `beta ∈ {1e-4, 1e-3, 1e-2}` with fixed foci and selects the best beta using a composite score (`0.7 × mean Sharpe + 0.3 × min Sharpe` across assets). Outputs plots and statistics to `gridsearch/results/`.
 
-## Training Hyperparameters
+---
 
-The following table shows the current hyperparameter settings for each training script:
+## Hyperparameters
 
-| Parameter               | train_rl.py | train_robust_rl.py | train_ball_rl.py |
-| ----------------------- | ----------- | ------------------ | ---------------- |
-| Robust Type             | None        | P1N2               | P1               |
-| Beta                    | N/A         | 0.0001             | 0.0001           |
-| P2 Coefficient          | N/A         | 1.0                | 1.0              |
-| U Dimension             | N/A         | 3                  | 3                |
-| Epsilon                 | N/A         | 0.001              | 0.001            |
-| Hidden Dimension        | 256         | 256                | 256              |
-| Learning Rate           | 0.0003      | 0.0003             | 0.0003           |
-| Gamma (Discount Factor) | 0.99        | 0.99               | 0.99             |
-| PPO Epsilon             | 0.2         | 0.2                | 0.2              |
-| Training Epochs         | 10          | 10                 | 10               |
-| Batch Size              | 64          | 64                 | 64               |
-| Number of Episodes      | 15-50*      | 15                 | 15-50*           |
+| Parameter | Value |
+|---|---|
+| Hidden dimension | 256 |
+| Learning rate | 3e-4 |
+| Discount factor γ | 0.99 |
+| PPO clip ε | 0.2 |
+| PPO epochs | 10 |
+| Batch size | 64 |
+| Number of episodes | 15 (META, MSFT) / 50 (SPY) |
+| Training period | 2021-05-09 to 2022-05-09 |
+| Backtest period | 2022-06-09 to 2022-12-09 |
 
-\* Number of episodes varies by ticker:
+**Robust PPO (p1N2) — uncertainty set parameters:**
 
-- SPY: 50 episodes
-- MSFT, META: 15 episodes
+| Parameter | Value |
+|---|---|
+| Beta (uncertainty size) | 1e-4 |
+| Epsilon (price discretisation step) | 1e-3 |
+| u dimension | 3 |
+| Focus buy (u1, u2) | [-1.5e-5, 0, 1.5e-5], [-4.5e-5, 0, 4.5e-5] |
+| Focus sell (u1, u2) | [1.5e-5, 0, -1.5e-5], [4.5e-5, 0, -4.5e-5] |
+
+Foci satisfy Theorem 3.5(b): `‖u1 − u2‖₁ = 6×10⁻⁵ < β = 10⁻⁴`.

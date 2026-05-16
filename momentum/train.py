@@ -24,7 +24,7 @@ def load_data(ticker, from_date, until_date):
     df_daily.to_csv(f'data/daily_{ticker}_data.csv', index=False)
     return df_intra, df_daily
 
-def train(config, df_intra, df_daily, ticker, robust_params=None):
+def train(config, df_intra, df_daily, ticker, robust_params=None, model_dir='models'):
     # Initialize wandb if enabled
     if config['wandb']['enabled']:
         # Create a meaningful run name
@@ -79,7 +79,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
     save_interval = config['rl']['save_interval']
     
     # Create directory for saving models
-    os.makedirs('models', exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
     
     # Training loop
     best_reward = float('-inf')
@@ -163,16 +163,16 @@ def train(config, df_intra, df_daily, ticker, robust_params=None):
         if episode_reward > best_reward:
             best_reward = episode_reward
             model_name = f"{ticker}_best_model_{robust_str}.pth"
-            trainer.save(f"models/{model_name}") 
-        
+            trainer.save(f"{model_dir}/{model_name}")
+
         # Save model periodically
         if (episode + 1) % save_interval == 0:
             model_name = f"{ticker}_model_episode_{episode + 1}_{robust_str}.pth"
-            trainer.save(f"models/{model_name}") 
-    
+            trainer.save(f"{model_dir}/{model_name}")
+
     # Close episode progress bar
     episode_pbar.close()
-    model_path = f"models/{ticker}_best_model_{robust_str}.pth"
+    model_path = f"{model_dir}/{ticker}_best_model_{robust_str}.pth"
     # Finish wandb run
     if config['wandb']['enabled']:
         wandb.finish()
@@ -196,41 +196,40 @@ def main():
         print("#"*100)
         print(f"\nTraining RL model for {ticker}")
         print(config) 
-        robust_params = None
-        # Train model
-        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params)
+        # Vanilla PPO
+        model_path = train(config, df_intra, df_daily, ticker, robust_params=None, model_dir='models')
         comparison_results = final_backtest_rl(ticker, model_path)
         print("RL Backtest Results: ", comparison_results)
+
+        # Robust PPO p1N2 (elliptic uncertainty set)
         print("#"*100)
-        print(f"\nTraining Robust RL model for {ticker}")
-        robust_params = {
+        print(f"\nTraining Robust RL model (p1N2) for {ticker}")
+        robust_params_p1n2 = {
             "robust_type": "p1N2",
             "beta": 1e-4,
+            "epsilon": 1e-3,
             "u_dim": 3,
-            "epsilon": 0.0,
-            "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
-            "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
+            "focus_buy":   [-1.5e-5, 0,  1.5e-5],
+            "focus_buy_2": [-4.5e-5, 0,  4.5e-5],
+            "focus_sell":  [ 1.5e-5, 0, -1.5e-5],
+            "focus_sell_2":[ 4.5e-5, 0, -4.5e-5],
         }
-        if ticker == 'META':
-            robust_params['epsilon'] = -0.001
-        else:
-            robust_params['epsilon'] = 0.001
-        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params)
+        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params_p1n2, model_dir='robust_models')
         comparison_results = final_backtest_rl(ticker, model_path)
-        print("Robust RL Backtest Results: ", comparison_results)
+        print("Robust RL (p1N2) Backtest Results: ", comparison_results)
+
+        # Robust PPO p1 (ball uncertainty set)
         print("#"*100)
-        print(f"\nTraining Robust RL model (Ball) for {ticker}")
-        robust_params = {
+        print(f"\nTraining Robust RL model (p1 ball) for {ticker}")
+        robust_params_p1 = {
             "robust_type": "p1",
             "beta": 1e-4,
             "epsilon": 1e-3,
             "u_dim": 3,
-            "focus_buy":  [0.1 - 1/3, -1/3, -1/3],
-            "focus_sell": [-1/3, -1/3, 0.1 - 1/3],
         }
-        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params)
+        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params_p1, model_dir='ball_models')
         comparison_results = final_backtest_rl(ticker, model_path)
-        print("Robust RL (Ball) Backtest Results: ", comparison_results)
+        print("Robust RL (p1 ball) Backtest Results: ", comparison_results)
 
 if __name__ == "__main__":
     main() 
