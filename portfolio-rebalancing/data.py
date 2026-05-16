@@ -34,7 +34,16 @@ def _load_local_frame(path, parse_dates=None):
         raise FileNotFoundError(f"Expected local WRDS file at {path}")
 
     if path.suffix == '.parquet':
-        return pd.read_parquet(path)
+        last_error = None
+        for attempt in range(3):
+            try:
+                return pd.read_parquet(path)
+            except (TimeoutError, OSError) as exc:
+                last_error = exc
+                if attempt == 2:
+                    break
+                time.sleep(1.0)
+        raise RuntimeError(f"Failed to read local parquet file after retries: {path}") from last_error
     if path.suffix == '.csv':
         return pd.read_csv(path, parse_dates=parse_dates)
 
