@@ -1,0 +1,205 @@
+% ============================================================
+%  Technical Training Slides  —  copy into your beamer file
+% ============================================================
+
+% ----------------------------------------------------------
+\begin{frame}{Network Architecture}
+% ----------------------------------------------------------
+\begin{center}
+\begin{tikzpicture}[
+  >=Latex,
+  block/.style={draw, rounded corners, minimum width=3.2cm, minimum height=0.55cm,
+                align=center, font=\small, fill=gray!8},
+  head/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.55cm,
+               align=center, font=\small},
+  label/.style={font=\scriptsize, align=center}
+]
+  % Input
+  \node[block] (inp) at (0, 4.0) {Input $s_t \in \mathbb{R}^{120}$};
+
+  % Shared trunk
+  \node[block] (l1) at (0, 3.1) {Linear $120 \to 256$ + ReLU};
+  \node[block] (l2) at (0, 2.4) {Linear $256 \to 256$ + ReLU};
+  \node[block] (l3) at (0, 1.7) {Linear $256 \to 256$ + ReLU};
+  \node[label]      at (2.5, 2.4) {\textit{shared trunk}};
+
+  \draw[->] (inp) -- (l1);
+  \draw[->] (l1)  -- (l2);
+  \draw[->] (l2)  -- (l3);
+
+  % Split
+  \draw[->] (l3.south) -- ++(0,-0.25) -| (-1.8, 0.9);
+  \draw[->] (l3.south) -- ++(0,-0.25) -| ( 1.8, 0.9);
+
+  % Actor head
+  \node[head, fill=blue!8]  (ah1) at (-1.8, 0.9)  {Linear $256\!\to\!128$ + ReLU};
+  \node[head, fill=blue!8]  (ah2) at (-1.8, 0.2)  {Linear $128\!\to\!1$ + Tanh};
+  \node[head, fill=blue!15] (pol) at (-1.8,-0.55) {Squashed Gaussian};
+  \node[label] at (-1.8,-1.1) {\textbf{Actor} — $a_t \in (-1,1)$};
+  \draw[->] (ah1) -- (ah2);
+  \draw[->] (ah2) -- (pol) node[midway, right, font=\tiny] {$\text{atanh}+\mathcal{N}+\tanh$};
+
+  % Critic head
+  \node[head, fill=red!8]   (ch1) at ( 1.8, 0.9)  {Linear $256\!\to\!128$ + ReLU};
+  \node[head, fill=red!8]   (ch2) at ( 1.8, 0.2)  {Linear $128\!\to\!1$};
+  \node[label] at (1.8,-0.25) {\textbf{Critic} — $V(s_t) \in \mathbb{R}$};
+  \draw[->] (ch1) -- (ch2);
+\end{tikzpicture}
+\end{center}
+\vspace{-4pt}
+{\scriptsize Weights: orthogonal init (gain $\sqrt{2}$), biases zeroed. Single Adam optimiser over all parameters.}
+\end{frame}
+
+
+% ----------------------------------------------------------
+\begin{frame}{State \& Action Space}
+% ----------------------------------------------------------
+\begin{block}{State $s_t \in \mathbb{R}^{120}$}
+Four features, each over a 30-day lookback window, concatenated:
+\[
+s_t = \bigl[\,\underbrace{p_{t-29},\ldots,p_t}_{30},\;
+             \underbrace{v_{t-29},\ldots,v_t}_{30},\;
+             \underbrace{r_{t-29},\ldots,r_t}_{30},\;
+             \underbrace{\sigma_{t-29},\ldots,\sigma_t}_{30}\bigr]
+\]
+where $p$ = normalised close price, $v$ = normalised volume,
+$r$ = daily return, $\sigma$ = rolling volatility.
+All features are normalised before concatenation.
+\end{block}
+
+\begin{block}{Action $a_t \in (-1, 1)$}
+Single scalar output. Interpreted as the \textbf{target position size}
+as a fraction of the maximum allowable share count.
+A separate model is trained independently for each asset
+(\texttt{META}, \texttt{MSFT}, \texttt{SPY}).
+\end{block}
+\end{frame}
+
+
+% ----------------------------------------------------------
+\begin{frame}{Reward Function}
+% ----------------------------------------------------------
+\begin{block}{Sharpe-like Reward}
+At each step $t$ the agent receives
+\[
+r_t \;=\;
+\underbrace{\frac{\Delta V_t / V_{t-1}}{\hat\sigma_{20}(t) + \varepsilon}}_{\text{risk-adjusted return}}
+\;-\;
+\underbrace{0.001\,\frac{|\Delta\text{pos}_t|}{\text{max\_shares}}}_{\text{transaction penalty}}
+\]
+where
+\begin{itemize}
+  \item $\Delta V_t = V_t - V_{t-1}$ is the change in portfolio value,
+  \item $\hat\sigma_{20}(t)$ is the rolling 20-step standard deviation of portfolio returns,
+  \item $|\Delta\text{pos}_t|$ is the absolute change in share count.
+\end{itemize}
+\end{block}
+\pause
+\begin{block}{Note on the Robust Reward}
+For robust variants, the robust correction $\gamma\,(u^*)^\top v$ is \textbf{added to rewards}
+before computing returns, so the adversarial penalty is propagated back through the full episode.
+\end{block}
+\end{frame}
+
+
+% ----------------------------------------------------------
+\begin{frame}{PPO Training Details}
+% ----------------------------------------------------------
+\begin{columns}[T]
+\column{0.48\textwidth}
+\begin{block}{Episode \& Update Loop}
+\begin{tabular}{ll}
+\toprule
+Episodes           & 100 \\
+Max steps/episode  & 1\,000 \\
+PPO update epochs  & 10 \\
+Mini-batch size    & 64 \\
+\bottomrule
+\end{tabular}
+\end{block}
+
+\begin{block}{Returns \& Advantages}
+\textbf{Monte Carlo returns} (no GAE):
+\[
+R_t = \sum_{k=0}^{T-t}\gamma^k r_{t+k}
+\]
+Advantages $A_t = R_t - V(s_t)$,
+then \textbf{batch-normalised}.
+\end{block}
+
+\column{0.48\textwidth}
+\begin{block}{Hyperparameters}
+\begin{tabular}{ll}
+\toprule
+Discount $\gamma$     & $0.99$ \\
+PPO clip $\varepsilon$ & $0.2$ \\
+Learning rate         & $3\times10^{-4}$ \\
+LR scheduler          & ReduceOnPlateau \\
+\quad factor          & $0.5$ \\
+\quad patience        & $5$ \\
+Grad clip (norm)      & $0.5$ \\
+$\log\sigma$ init     & $-1.0$ \\
+\bottomrule
+\end{tabular}
+\end{block}
+
+\begin{block}{Loss}
+\vspace{-4pt}
+\small
+$\mathcal{L} = \mathcal{L}_\text{actor} + 0.5\,\mathcal{L}_\text{critic}$
+\end{block}
+\end{columns}
+\end{frame}
+
+
+% ----------------------------------------------------------
+\begin{frame}{Robust Training Parameters}
+% ----------------------------------------------------------
+\begin{block}{Elliptic Model — Theorem 3.5(b), $p=1$, $N=2$}
+\begin{tabular}{lll}
+\toprule
+Parameter & Symbol & Value \\
+\midrule
+Uncertainty size  & $\beta$        & $10^{-4}$ \\
+Price disc.\ step & $\varepsilon$  & $10^{-3}$ \\
+Value vector dim  & $d$            & $3$ \\
+\midrule
+Focus buy   & $u_1^{\text{buy}}$  & $[-1.5\times10^{-5},\;0,\;1.5\times10^{-5}]$ \\
+Focus buy   & $u_2^{\text{buy}}$  & $[-4.5\times10^{-5},\;0,\;4.5\times10^{-5}]$ \\
+Focus sell  & $u_1^{\text{sell}}$ & $[1.5\times10^{-5},\;0,\;-1.5\times10^{-5}]$ \\
+Focus sell  & $u_2^{\text{sell}}$ & $[4.5\times10^{-5},\;0,\;-4.5\times10^{-5}]$ \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+{\small Foci satisfy Theorem 3.5(b): $\|u_1 - u_2\|_1 = 6\times10^{-5} < \beta = 10^{-4}$.
+Action-dependent: buy foci used when $a_t > 0$, sell foci otherwise.}
+\end{block}
+
+\begin{block}{Ball Model — Theorem 3.5(a), $p=1$, $N=1$}
+$u_1 = \mathbf{0}$,\quad $\beta = 10^{-4}$.\quad
+$u^*$ concentrates all perturbation on the coordinate with $\max_j |v_j + \mu^*|$.
+\end{block}
+\end{frame}
+
+
+% ----------------------------------------------------------
+\begin{frame}{Training vs.\ Evaluation Protocol}
+% ----------------------------------------------------------
+\begin{block}{Training (no market impact)}
+\begin{itemize}
+  \item Environment uses nominal transition $\mathbb{P}_0$: prices are exogenous, no slippage.
+  \item Robust models add the adversarial correction $u^*$ to rewards at each step.
+  \item Best model checkpoint saved by highest cumulative episode reward.
+\end{itemize}
+\end{block}
+
+\begin{block}{Evaluation (with / without market impact)}
+\begin{itemize}
+  \item Deterministic actions: $a_t = \tanh(\text{actor\_mean}(s_t))$, no sampling.
+  \item \textbf{Without MI}: same $\mathbb{P}_0$ as training — measures in-distribution performance.
+  \item \textbf{With MI}: execution price via VWAP over a 15-minute LOB window, reconstructed from raw TAQ trades.
+  \item Both modes run over the held-out period 2022-06-09 $\to$ 2022-12-09.
+\end{itemize}
+\end{block}
+\end{frame}

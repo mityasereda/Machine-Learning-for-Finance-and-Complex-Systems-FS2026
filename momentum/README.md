@@ -87,7 +87,7 @@ Trains the p1N2 model across `beta ∈ {1e-4, 1e-3, 1e-2}` with fixed foci and s
 | PPO clip ε | 0.2 |
 | PPO epochs | 10 |
 | Batch size | 64 |
-| Number of episodes | 15 (META, MSFT) / 50 (SPY) |
+| Number of episodes | 100 |
 | Training period | 2021-05-09 to 2022-05-09 |
 | Backtest period | 2022-06-09 to 2022-12-09 |
 

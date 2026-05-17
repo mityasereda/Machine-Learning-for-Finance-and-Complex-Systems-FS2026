@@ -210,10 +210,6 @@ def main():
         print(f"\nTraining model for {ticker}")
         from_date = '2021-05-09'
         until_date = '2022-05-09'
-        if ticker in ['MSFT', 'QQQ', 'SPY']:
-            config['rl']['num_episodes'] = 50 
-        elif ticker in ['AAPL', 'META', 'XOM']:
-            config['rl']['num_episodes'] = 15  
         # Load data
         df_intra, df_daily = load_data(ticker, from_date, until_date)
         

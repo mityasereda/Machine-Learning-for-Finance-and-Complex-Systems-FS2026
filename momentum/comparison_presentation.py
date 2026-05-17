@@ -10,6 +10,7 @@ from matplotlib.lines import Line2D
 RESULTS_DIR    = "results"
 RL_RESULTS_DIR = "backtest_rl_results"
 OUTPUT_DIR     = "results"
+DAILY_DIR      = "../data/wrds/processed/daily"
 
 ASSETS = ["META", "MSFT", "SPY"]
 
@@ -18,11 +19,11 @@ STRATEGIES = {
     "robust_p1N2": {"label": "Robust RL (Elliptic, p1N2)", "color": "#E53935"},
     "robust_p1":   {"label": "Robust RL (Ball, p1)",       "color": "#43A047"},
     "momentum":    {"label": "Momentum (Classical)",        "color": "#FB8C00"},
-    "spy":         {"label": "S&P 500 Benchmark",           "color": "#9E9E9E"},
+    "bnh":         {"label": "Buy & Hold",                   "color": "#7B1FA2"},
 }
 
 TABLE_ROW_ORDER = [
-    ("spy",         "benchmark"),
+    ("bnh",         "benchmark"),
     ("momentum",    "no_impact"),
     ("momentum",    "with_impact"),
     ("no_robust",   "no_impact"),
@@ -62,6 +63,13 @@ def load_rl_results(ticker):
     return results
 
 
+def load_buyandhold(ticker, start_date, initial_aum=100000.0):
+    df = pd.read_parquet(f"{DAILY_DIR}/{ticker}_daily.parquet")
+    df.index = pd.to_datetime(df["caldt"])
+    prices = df["close"].sort_index().loc[start_date:].dropna()
+    return initial_aum * prices / prices.iloc[0]
+
+
 def cum_return_from_aum(series):
     return (series / series.iloc[0] - 1) * 100
 
@@ -93,9 +101,9 @@ def compute_stats(pv_array, daily_ret_array):
 def compute_all_stats(ticker, mom_no, mom_wi, rl_results, rl_dates):
     rows = {}
 
-    # S&P 500 benchmark (single series, from no-impact CSV)
-    spy_aum = mom_no["AUM_SPX"].loc[rl_dates[0]:].dropna().values
-    rows[("spy", "benchmark")] = compute_stats(spy_aum, np.diff(spy_aum) / spy_aum[:-1])
+    # Stock buy-and-hold benchmark
+    bnh = load_buyandhold(ticker, rl_dates[0]).values
+    rows[("bnh", "benchmark")] = compute_stats(bnh, np.diff(bnh) / bnh[:-1])
 
     # Momentum — align to RL start date, reconstruct AUM array
     for impact_mode, df in [("no_impact", mom_no), ("with_impact", mom_wi)]:
@@ -143,12 +151,11 @@ def collect_stats_rows(ticker, stats):
 def plot_asset(ticker, mom_no, mom_wi, rl_results, rl_dates):
     fig, ax = plt.subplots(figsize=(13, 6))
 
-    # SPY benchmark
-    spy_cum = cum_return_from_aum(mom_no["AUM_SPX"].dropna())
-    spy_cum = spy_cum.loc[rl_dates[0]:]
-    spy_cum = spy_cum - spy_cum.iloc[0]
-    ax.plot(spy_cum.index, spy_cum.values,
-            color=STRATEGIES["spy"]["color"], linewidth=1.2, linestyle="-", alpha=0.6, zorder=1)
+    # Stock buy-and-hold benchmark
+    bnh = load_buyandhold(ticker, rl_dates[0])
+    bnh_cum = cum_return_from_aum(bnh) - cum_return_from_aum(bnh).iloc[0]
+    ax.plot(bnh_cum.index, bnh_cum.values,
+            color=STRATEGIES["bnh"]["color"], linewidth=1.2, linestyle="-", alpha=0.8, zorder=1)
 
     # Momentum
     for impact_mode, df in [("no_impact", mom_no), ("with_impact", mom_wi)]:
@@ -180,8 +187,9 @@ def plot_asset(ticker, mom_no, mom_wi, rl_results, rl_dates):
 
     strategy_handles = [
         Line2D([0], [0], color=STRATEGIES[k]["color"], linewidth=2.5, label=STRATEGIES[k]["label"])
-        for k in ["momentum", "no_robust", "robust_p1N2", "robust_p1", "spy"]
-    ]
+        for k in ["momentum", "no_robust", "robust_p1N2", "robust_p1"]
+    ] + [Line2D([0], [0], color=STRATEGIES["bnh"]["color"], linewidth=2.5,
+                label=f"{ticker} Buy & Hold")]
     style_handles = [
         Line2D([0], [0], color="black", linewidth=2, linestyle="-",  label="With market impact"),
         Line2D([0], [0], color="black", linewidth=2, linestyle="--", label="No market impact"),

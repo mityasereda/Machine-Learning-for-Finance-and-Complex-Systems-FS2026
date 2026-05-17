@@ -63,16 +63,7 @@ if __name__ == "__main__":
         _config = yaml.safe_load(f)
     set_seed(_config.get('seed', 42))
 
-    # ETFs and stocks: Momentum-friendly and Momentum-resistant
-    tickers = [
-        # ETFs
-        "SPY", "QQQ", "XLK", "MTUM", "XLF",  # momentum-friendly
-        "TLT", "GLD", "XLP", "VYM", "USO",   # momentum-challenged
-
-        # Stocks
-        "NVDA", "AAPL", "MSFT", "META", "TSLA",  # momentum-friendly
-        "JNJ", "KO", "T", "INTC", "XOM"          # momentum-challenged
-    ]
+    tickers = ["META", "MSFT", "SPY"]
 
     from_date  = "2022-06-09"
     until_date = "2022-12-09"
