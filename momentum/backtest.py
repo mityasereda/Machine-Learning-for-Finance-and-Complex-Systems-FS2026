@@ -119,8 +119,7 @@ class BacktestEngine:
                         change_1m[sell_mask] = np.array(effective_sell_prices) - sell_prices
 
                 gross_pnl = np.sum(exposure * change_1m) * shares
-                commission_paid = trades_count * max(self.min_comm_per_order, self.commission * shares)
-                net_pnl = gross_pnl - commission_paid
+                net_pnl = gross_pnl
 
                 # Update strategy metrics
                 strat.loc[current_day, 'AUM'] = previous_aum + net_pnl

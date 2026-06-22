@@ -1,0 +1,34 @@
+% Implementation notes — commits 782b79d, d70d70e, 56fe5ff
+% (follows on from the notes covering commits up to 324f2c1)
+
+Several further improvements were made to the codebase following the initial
+presentation pipeline and grid-search additions.
+
+\textbf{Buy-and-hold benchmark in comparison plots.}
+The strategy comparison script \texttt{comparison\_presentation.py} was updated
+to replace the previously hardcoded SPY benchmark (displayed in grey) with a
+ticker-specific buy-and-hold series loaded directly from the WRDS daily
+parquet files.
+The series is indexed by the \texttt{caldt} column (the default integer index
+of these files does not carry date information) and normalised to the RL
+evaluation start date, so all strategies share a common baseline.
+The buy-and-hold line is rendered in purple and labelled
+\textit{\{ticker\} Buy \& Hold} in the legend; it carries no market-impact
+adjustment, reflecting a passive holding of the underlying asset.
+
+\textbf{Training script fixes.}
+Per-ticker episode-count overrides that had been left in
+\texttt{train\_rl.py} and \texttt{train\_ball\_rl.py} were removed;
+\texttt{config.yaml} is now the single source of truth for
+\texttt{num\_episodes} (set to 100).
+The ticker list in \texttt{backtest\_momentum.py} was restricted to the three
+assets used throughout the project (META, MSFT, SPY), preventing the script
+from attempting to load WRDS data for tickers that are not available locally.
+
+\textbf{Documentation.}
+The content of \texttt{momentum/README.md} was merged into the root
+\texttt{README.md}, which now contains the complete end-to-end pipeline
+(training, momentum backtest, result presentation, optional beta grid search),
+the full hyperparameter tables, and pre-trained model paths.
+The \texttt{momentum/README.md} file was subsequently deleted to avoid
+duplication.

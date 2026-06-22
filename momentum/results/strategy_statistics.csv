@@ -1,28 +1,28 @@
 ticker,strategy,market_impact,total_return,sharpe_ratio,max_drawdown,ann_volatility
-META,S&P 500 Benchmark,—,-27.1757,-0.9444,-50.8487,64.4567
-META,Momentum (Classical),no,-0.9022,-0.134,-6.527,12.2144
-META,Momentum (Classical),with,0.2382,0.1118,-5.9257,12.0173
-META,RL (Vanilla PPO),no,-13.0794,-1.2677,-26.6487,26.2446
-META,RL (Vanilla PPO),with,-17.6183,-1.728,-30.0653,27.2282
-META,"Robust RL (Elliptic, p1N2)",no,-17.5081,-1.6556,-22.0749,28.0832
-META,"Robust RL (Elliptic, p1N2)",with,-25.7895,-2.4042,-26.9361,30.5506
-META,"Robust RL (Ball, p1)",no,-25.6028,-0.5288,-57.0487,80.5279
-META,"Robust RL (Ball, p1)",with,-25.7933,-0.5338,-57.1364,80.7165
-MSFT,S&P 500 Benchmark,—,-2.0901,0.0397,-26.8385,37.6114
-MSFT,Momentum (Classical),no,7.4898,1.4785,-6.4984,13.4338
-MSFT,Momentum (Classical),with,8.3914,1.6931,-6.0942,12.992
-MSFT,RL (Vanilla PPO),no,-11.3329,-1.3121,-14.5256,22.1577
-MSFT,RL (Vanilla PPO),with,-15.1918,-1.795,-18.2258,22.633
-MSFT,"Robust RL (Elliptic, p1N2)",no,14.1875,1.5613,-9.6991,24.1856
-MSFT,"Robust RL (Elliptic, p1N2)",with,12.9111,1.4314,-9.7592,24.3437
-MSFT,"Robust RL (Ball, p1)",no,4.3521,0.5805,-14.4788,24.3346
-MSFT,"Robust RL (Ball, p1)",with,0.8286,0.2105,-16.0356,24.7338
-SPY,S&P 500 Benchmark,—,1.0282,0.2316,-16.6777,24.4683
-SPY,Momentum (Classical),no,16.6308,3.3769,-1.9876,12.1858
-SPY,Momentum (Classical),with,15.3531,3.1941,-1.9909,11.9682
-SPY,RL (Vanilla PPO),no,-3.6808,-0.7929,-8.2467,11.5705
-SPY,RL (Vanilla PPO),with,-0.6226,-0.0589,-6.5524,13.1274
-SPY,"Robust RL (Elliptic, p1N2)",no,4.9574,0.8636,-6.0028,16.2384
-SPY,"Robust RL (Elliptic, p1N2)",with,8.2287,1.3457,-5.9443,16.4359
-SPY,"Robust RL (Ball, p1)",no,-4.6569,-0.8941,-8.6187,13.0484
-SPY,"Robust RL (Ball, p1)",with,1.7339,0.4128,-5.8234,12.9587
+META,Buy & Hold,—,-27.1756,-0.9444,-50.8486,64.4566
+META,Momentum (Classical),no,-0.618,-0.0725,-6.2973,12.2089
+META,Momentum (Classical),with,0.5122,0.1715,-5.7993,12.0099
+META,RL (Vanilla PPO),no,-11.9026,-0.7894,-28.6924,34.4439
+META,RL (Vanilla PPO),with,-18.1069,-1.2692,-33.3605,36.0382
+META,"Robust RL (Elliptic, p1N2)",no,40.1201,2.6651,-13.1974,35.5779
+META,"Robust RL (Elliptic, p1N2)",with,34.6533,2.3029,-14.8477,36.8044
+META,"Robust RL (Ball, p1)",no,-15.7779,-0.856,-31.6354,41.8003
+META,"Robust RL (Ball, p1)",with,-21.3816,-1.2334,-33.8201,43.1314
+MSFT,Buy & Hold,—,-2.5724,0.0053,-26.9942,37.6161
+MSFT,Momentum (Classical),no,7.7852,1.5329,-6.3873,13.4262
+MSFT,Momentum (Classical),with,8.6849,1.7484,-6.0455,12.9874
+MSFT,RL (Vanilla PPO),no,9.4527,1.0413,-9.7341,25.9978
+MSFT,RL (Vanilla PPO),with,7.1696,0.8231,-10.8016,26.2386
+MSFT,"Robust RL (Elliptic, p1N2)",no,4.9451,0.6227,-7.9024,25.6435
+MSFT,"Robust RL (Elliptic, p1N2)",with,3.4561,0.4739,-8.2046,25.9388
+MSFT,"Robust RL (Ball, p1)",no,1.4654,0.2856,-10.4693,21.7413
+MSFT,"Robust RL (Ball, p1)",with,-2.3768,-0.1703,-12.9866,22.304
+SPY,Buy & Hold,—,0.6114,0.1874,-17.0212,24.5113
+SPY,Momentum (Classical),no,16.8824,3.4233,-1.9833,12.186
+SPY,Momentum (Classical),with,15.5987,3.2412,-1.9835,11.9669
+SPY,RL (Vanilla PPO),no,1.0055,0.2517,-7.3041,14.7173
+SPY,RL (Vanilla PPO),with,9.1721,1.6006,-5.6884,15.1083
+SPY,"Robust RL (Elliptic, p1N2)",no,7.8496,1.2564,-8.7582,16.9294
+SPY,"Robust RL (Elliptic, p1N2)",with,18.2758,2.6987,-6.0084,16.8635
+SPY,"Robust RL (Ball, p1)",no,6.3103,1.2002,-8.1462,14.2275
+SPY,"Robust RL (Ball, p1)",with,12.982,2.2731,-6.9491,14.569

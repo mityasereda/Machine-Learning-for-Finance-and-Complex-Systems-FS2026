@@ -1,0 +1,413 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{microtype}
+
+\title{\textbf{RL Trading Implementation Notes}\\
+\large Exact mechanics of training, state, action, reward, and backtesting}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+% ============================================================
+\section{Overview}
+
+Three model variants are trained for each of the three assets (META, MSFT, SPY):
+
+\begin{enumerate}
+  \item \textbf{Vanilla PPO} --- standard proximal policy optimisation, no robustness.
+  \item \textbf{Robust PPO (p1N2)} --- PPO with a worst-case correction derived from an elliptic uncertainty set ($N{=}2,\,p{=}1$).
+  \item \textbf{Robust PPO (p1)} --- PPO with a worst-case correction derived from an $\ell_1$-ball uncertainty set ($N{=}1$).
+\end{enumerate}
+
+All three variants share the same environment, neural network architecture, and PPO update logic. The only difference between vanilla and robust is that the robust variants augment the rewards used to compute Monte Carlo returns with an adversarial correction term (see Section~\ref{sec:robust}).
+
+Training and backtesting are run from the \texttt{momentum/} directory via \texttt{python train.py}.
+
+% ============================================================
+\section{Data}
+
+\subsection{Source and format}
+
+Data is loaded from local WRDS parquet files stored in \texttt{../data/wrds/}:
+\begin{itemize}
+  \item \textbf{Intraday data}: \texttt{processed/intraday/\{ticker\}\_1min.parquet} --- one row per minute bar.
+  \item \textbf{Daily data}: \texttt{processed/daily/\{ticker\}\_daily.parquet} --- one row per calendar day.
+\end{itemize}
+
+Both datasets are fetched and preprocessed by \texttt{data.py:get\_data()}, which adds derived columns (e.g.\ \texttt{day}, \texttt{dividend}, \texttt{spy\_dvol}, \texttt{sigma\_open}) to the intraday frame.
+
+\subsection{Columns used in the RL environment}
+
+The RL environment (\texttt{rl\_environment.py}) uses only the following columns from the intraday frame:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Column & Usage \\
+\midrule
+\texttt{close} & Prices for state construction; entry/exit price for trades \\
+\texttt{volume} & Feature in state observation \\
+\texttt{day}   & Groups rows by trading day \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The daily frame is passed to the environment constructor but is \textbf{not read} inside the environment step or observation functions. It exists only for compatibility with the shared \texttt{TradingEnvironment} constructor.
+
+\subsection{Columns listed in config but \emph{not} used}
+
+\texttt{config.yaml} lists RSI, MACD, Bollinger bands, and market impact as state features under \texttt{rl.features}. These are \textbf{not implemented} in the observation construction --- the actual observation uses only the four features described in Section~\ref{sec:state}. The config list is a remnant and has no effect.
+
+\subsection{Periods}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Phase & Date range \\
+\midrule
+Training & 2021-05-09 to 2022-05-09 \\
+Backtesting & 2022-06-09 to 2022-12-09 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The one-month gap between training end and backtest start is intentional to avoid look-ahead.
+
+% ============================================================
+\section{State Space}
+\label{sec:state}
+
+\subsection{Lookback window}
+
+The environment reads the lookback period from \texttt{config['backtesting'].get('lookback\_period', 30)}. Because \texttt{lookback\_period} is not set in \texttt{backtesting} section of \texttt{config.yaml}, the default of \textbf{30} is always used. (Note: \texttt{config.yaml} contains \texttt{rl.lookback\_window: 20} but this key is never read by the environment.)
+
+\subsection{Observation construction (day granularity)}
+
+At step $t$ (current trading day index \texttt{current\_day\_idx}), the observation is built from all intraday rows belonging to the 30 trading days \emph{prior} to the current day:
+
+\[
+  \text{lookback\_data} = \bigl\{ \text{rows with } \texttt{day} \in [\text{day}_{t-30},\, \text{day}_{t-1}] \bigr\}
+\]
+
+This window typically contains $30 \times \sim\!390$ rows (one per minute). Four raw feature arrays are extracted from this pool:
+
+\begin{enumerate}
+  \item \texttt{prices} $=$ \texttt{close} values of all rows in the window.
+  \item \texttt{volumes} $=$ \texttt{volume} values of all rows in the window.
+  \item \texttt{returns} $=$ minute-to-minute price returns: $r_i = (p_i - p_{i-1})/p_{i-1}$, with a leading zero prepended.
+  \item \texttt{volatilities} $=$ rolling 20-step standard deviation of \texttt{prices}, NaN replaced by zero.
+\end{enumerate}
+
+Each array is z-score normalised:
+\[
+  x_{\text{norm}} = \frac{x - \bar{x}}{\sigma_x + 10^{-8}}
+\]
+
+The observation is then formed by taking the \textbf{last 30 elements} of each normalised array and concatenating them:
+\[
+  s_t = \bigl[\underbrace{p^{\text{norm}}_{-30:\,}}_{\text{prices}},\;
+              \underbrace{v^{\text{norm}}_{-30:\,}}_{\text{volumes}},\;
+              \underbrace{r^{\text{norm}}_{-30:\,}}_{\text{returns}},\;
+              \underbrace{\sigma^{\text{norm}}_{-30:\,}}_{\text{volatilities}}\bigr]
+  \;\in\;\mathbb{R}^{120}
+\]
+
+Because the lookback window has many more than 30 rows, the ``last 30'' slice corresponds to the final 30 minute bars of the most recent lookback day (i.e.\ day $t{-}1$), not one close price per day.
+
+\subsection{What the agent actually sees}
+
+The agent observes 30 consecutive minute-level close prices, volumes, returns, and volatilities --- all from the last $\sim$30 minutes of the previous trading day --- expressed as z-scores relative to the entire 30-day lookback window.
+
+% ============================================================
+\section{Action Space}
+
+The action is a scalar $a_t \in (-1, 1)$ representing the \textbf{target position as a fraction of maximum shares}:
+
+\[
+  \text{max\_shares} = \left\lfloor \frac{\text{initial\_cash}}{\text{current\_price}} \right\rfloor, \qquad
+  \text{target\_shares} = \lfloor a_t \times \text{max\_shares} \rfloor
+\]
+
+Positive values indicate a long position; negative values indicate a short position. The portfolio is rebalanced each step by trading the difference between the target and current number of shares.
+
+% ============================================================
+\section{Reward Function}
+
+The reward at each step is a Sharpe-like ratio penalised for excessive trading:
+
+\[
+  r_t = \frac{\Delta V_t / V_{t-1}}{\hat{\sigma}_t + 10^{-8}} - 0.001 \cdot \frac{|\Delta\text{shares}_t|}{\text{max\_shares}}
+\]
+
+where:
+\begin{itemize}
+  \item $\Delta V_t = V_t - V_{t-1}$ is the change in portfolio value (cash + mark-to-market).
+  \item $\hat{\sigma}_t = \text{std}\bigl(\{V_k/V_{k-1} - 1\}_{k=t-19}^{t}\bigr)$ is the rolling 20-step return volatility of the portfolio.
+  \item $|\Delta\text{shares}_t|$ is the absolute trade size.
+\end{itemize}
+
+\textbf{No transaction commissions} are charged during RL training. Market impact is also disabled during training (the environment is always created with \texttt{consider\_market\_impact=False} in \texttt{train.py}).
+
+% ============================================================
+\section{Neural Network Architecture}
+
+\subsection{Shared trunk}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Layer & Shape / activation \\
+\midrule
+Linear & $120 \to 256$ \\
+ReLU   & --- \\
+Linear & $256 \to 256$ \\
+ReLU   & --- \\
+Linear & $256 \to 256$ \\
+ReLU   & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Actor head (policy)}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Layer & Shape / activation \\
+\midrule
+Linear & $256 \to 128$ \\
+ReLU   & --- \\
+Linear & $128 \to 1$ \\
+Tanh   & output $\in (-1,1)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Critic head (value function)}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Layer & Shape / activation \\
+\midrule
+Linear & $256 \to 128$ \\
+ReLU   & --- \\
+Linear & $128 \to 1$ \\
+(none) & scalar value \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Policy distribution}
+
+The actor outputs a deterministic mean $\mu_t \in (-1,1)$. To sample an action, the mean is first inverted through $\tanh^{-1}$ to obtain a latent mean, a learnable log-standard-deviation $\log\sigma$ (scalar, shared across the action dimension) is exponentiated, and then a $\tanh$-squashed Normal distribution is used:
+
+\[
+  z \sim \mathcal{N}(\tanh^{-1}(\mu_t),\;\sigma^2), \qquad a = \tanh(z)
+\]
+
+During \textbf{evaluation/backtest}, the action is taken deterministically as $a = \mu_t$ (no sampling).
+
+All weights are initialised with orthogonal initialisation (gain $\sqrt{2}$), biases initialised to zero.
+
+% ============================================================
+\section{Episode Structure}
+
+\subsection{Day granularity}
+
+Each episode corresponds to a single sequential pass through all available trading days in the dataset. At the start of each episode:
+\begin{itemize}
+  \item The environment resets to \texttt{current\_day\_idx = lookback\_period = 30}, so the first actionable day is day 30 (the first day for which a full lookback window is available).
+  \item Cash is reset to \$100{,}000; shares held reset to 0.
+\end{itemize}
+
+Each step advances \texttt{current\_day\_idx} by 1. An episode terminates when \texttt{current\_day\_idx $\geq$ len(days) $-$ 1}. With approximately 252 trading days in the training year, an episode has roughly $252 - 30 = 222$ steps. The \texttt{max\_steps = 1000} config value is never the binding constraint.
+
+\subsection{What happens at each step}
+
+\begin{enumerate}
+  \item Observation $s_t$ is constructed from the previous 30 days' intraday data.
+  \item Action $a_t$ is sampled (training) or taken deterministically (backtest).
+  \item The current day's trade is executed at the \textbf{closing price of the current day's last intraday bar} (\texttt{current\_data['close'].iloc[-1]}).
+  \item Portfolio value is marked to market using \texttt{current\_price}.
+  \item Reward $r_t$ is computed. \texttt{current\_day\_idx} increments.
+  \item A new observation $s_{t+1}$ is returned.
+\end{enumerate}
+
+The PnL for day $t$ thus reflects the price move from the \emph{open bar} (\texttt{close.iloc[0]}) to the \emph{close bar} (\texttt{close.iloc[-1]}) of that day --- both taken from the intraday frame, not from the daily OHLCV file.
+
+% ============================================================
+\section{PPO Training Loop}
+
+\subsection{Rollout collection}
+
+A full episode is collected before any weight update:
+
+\begin{enumerate}
+  \item Reset environment; initialise lists for states, actions, rewards, next states, dones, log-probabilities.
+  \item For each step: sample action + log-prob; step environment; append all quantities.
+  \item Break if \texttt{done}.
+\end{enumerate}
+
+The environment used for rollout collection \textbf{always has \texttt{robust\_params=None}}, regardless of whether the model is vanilla or robust. Adversarial price perturbation does not occur during trajectory collection.
+
+\subsection{PPO update}
+
+After the episode ends, \texttt{PPOTrainer.update()} is called once with the full episode buffer. The update proceeds as follows:
+
+\paragraph{Step 1 --- Robust correction (robust variants only).}
+For robust variants, \texttt{calculate\_u\_star()} is called to compute a per-step adversarial correction $\delta_t = \gamma \cdot (v^\top u^*)_t$, where $v$ is the 3-dim critic value vector evaluated at three perturbed next-states (see Section~\ref{sec:robust}). The corrections are added to the reward sequence:
+\[
+  \tilde{r}_t = r_t + \delta_t
+\]
+For vanilla PPO, $\tilde{r}_t = r_t$.
+
+\paragraph{Step 2 --- Monte Carlo returns.}
+Returns are computed by backward accumulation from the end of the episode:
+\[
+  G_T = V(s_{T+1}) \cdot (1 - d_T), \qquad
+  G_t = \tilde{r}_t + \gamma \cdot G_{t+1} \cdot (1 - d_t)
+\]
+where $V(\cdot)$ is the current critic and $d_t \in \{0,1\}$ is the done flag.
+
+\paragraph{Step 3 --- Advantage normalisation.}
+\[
+  A_t = G_t - V(s_t), \qquad
+  \hat{A}_t = \frac{A_t - \bar{A}}{\text{std}(A) + 10^{-8}}
+\]
+
+\paragraph{Step 4 --- $K$ epochs of mini-batch updates.}
+The episode buffer is shuffled and split into mini-batches of size 64. For each mini-batch, the PPO clipped objective is minimised jointly with the critic MSE loss:
+\[
+  \mathcal{L} = -\mathbb{E}\Bigl[\min\bigl(r_t(\theta)\hat{A}_t,\;\text{clip}(r_t(\theta), 1{-}\varepsilon, 1{+}\varepsilon)\hat{A}_t\bigr)\Bigr]
+              + 0.5\,\mathbb{E}\bigl[(V_\theta(s_t) - G_t)^2\bigr]
+\]
+where $r_t(\theta) = \pi_\theta(a_t|s_t)/\pi_{\theta_\text{old}}(a_t|s_t)$ is the likelihood ratio and $\varepsilon = 0.2$ is the PPO clipping threshold.
+
+Gradient norms are clipped to 0.5. The Adam optimiser uses a \texttt{ReduceLROnPlateau} scheduler (factor 0.5, patience 5 episodes).
+
+\paragraph{Step 5 --- Model checkpointing.}
+After each episode update, if the total undiscounted episode reward exceeds the previous best, the model weights are saved as \texttt{\{model\_dir\}/\{ticker\}\_best\_model\_\{robust\_str\}.pth}. Periodic saves also occur every 100 episodes.
+
+% ============================================================
+\section{Robust Variants}
+\label{sec:robust}
+
+\subsection{Mechanism}
+
+For robust variants, after collecting the episode rollout, the PPO update augments rewards using a worst-case adversarial correction. The correction is derived from the critic's sensitivity to price perturbations.
+
+\paragraph{Discretised value vector $v$.}
+For each transition $(s_t, a_t, s_{t+1})$ in the episode, three perturbed versions of $s_{t+1}$ are constructed by adding $\pm\varepsilon_{\text{robust}} = 10^{-3}$ to the element at \texttt{price\_idx = 29} (the 30th element of the state, i.e.\ the most recent z-score normalised price):
+\[
+  v = \bigl[V(s_{t+1}^{\uparrow}),\; V(s_{t+1}),\; V(s_{t+1}^{\downarrow})\bigr] \in \mathbb{R}^3
+\]
+
+\paragraph{Worst-case perturbation $u^*$.}
+$u^*$ is computed from $v$ according to Theorem~3.5 of the paper (elliptic or ball uncertainty set). The scalar correction is $v^\top u^*$.
+
+\paragraph{Reward augmentation.}
+\[
+  \tilde{r}_t = r_t + \gamma \cdot (v^\top u^*)_t
+\]
+The augmented rewards are then used in place of $r_t$ for the MC return computation.
+
+\subsection{Parameters}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Parameter & p1N2 value & p1 value \\
+\midrule
+$\beta$ (uncertainty size) & $10^{-4}$ & $10^{-4}$ \\
+$\varepsilon_{\text{robust}}$ (price perturbation step) & $10^{-3}$ & $10^{-3}$ \\
+$u$-dimension & 3 & 3 \\
+Focus $u_1$ (buy) & $[-1.5\times10^{-5},\,0,\,1.5\times10^{-5}]$ & --- \\
+Focus $u_2$ (buy) & $[-4.5\times10^{-5},\,0,\,4.5\times10^{-5}]$ & --- \\
+Focus $u_1$ (sell) & $[1.5\times10^{-5},\,0,\,-1.5\times10^{-5}]$ & --- \\
+Focus $u_2$ (sell) & $[4.5\times10^{-5},\,0,\,-4.5\times10^{-5}]$ & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For p1N2, the action sign determines which pair of foci is used: $a_t > 0$ selects the buy foci; $a_t \leq 0$ selects the sell foci.
+
+The batch-averaged $u^*$ vector is saved to a \texttt{.npy} file after each update. The environment's \texttt{step()} function contains logic to load this file and use it to shift a price-perturbation sampling distribution --- but this code path is \textbf{never activated during training} because \texttt{robust\_params=None} is always passed to the environment in \texttt{train.py}. It is similarly not activated during backtesting.
+
+% ============================================================
+\section{Backtesting Protocol}
+
+After training completes, \texttt{final\_backtest\_rl()} is called automatically. It runs the backtest over the held-out period (2022-06-09 to 2022-12-09) in two modes:
+
+\begin{enumerate}
+  \item \textbf{Without market impact}: \texttt{consider\_market\_impact=False} --- trades execute at the last intraday close price.
+  \item \textbf{With market impact}: \texttt{consider\_market\_impact=True} --- the close price is adjusted by a market impact factor computed by \texttt{MarketImpactCalculator}.
+\end{enumerate}
+
+During backtest:
+\begin{itemize}
+  \item The policy acts \textbf{deterministically}: \texttt{select\_action()} returns $a_t = \mu_t$ with no noise.
+  \item \texttt{robust\_params=None} is passed to the environment, so no adversarial price perturbation is applied during evaluation either.
+  \item Results (portfolio values, positions, returns, Sharpe ratio, max drawdown) are serialised to \texttt{backtest\_rl\_results/\{model\_name\}\_\{no,with\}\_impact.pkl}.
+\end{itemize}
+
+% ============================================================
+\section{Hyperparameter Summary}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Hyperparameter & Value \\
+\midrule
+\multicolumn{2}{l}{\textit{Network}} \\
+Hidden dimension & 256 \\
+Actor head width & 128 \\
+Critic head width & 128 \\
+\midrule
+\multicolumn{2}{l}{\textit{PPO}} \\
+Learning rate & $3\times10^{-4}$ \\
+Discount factor $\gamma$ & 0.99 \\
+PPO clip $\varepsilon$ & 0.2 \\
+Update epochs per episode & 10 \\
+Mini-batch size & 64 \\
+Gradient clip norm & 0.5 \\
+\midrule
+\multicolumn{2}{l}{\textit{Training}} \\
+Number of episodes & 100 \\
+Max steps per episode & 1000 (not binding) \\
+Random seed & 42 \\
+\midrule
+\multicolumn{2}{l}{\textit{Environment}} \\
+Initial cash & \$100{,}000 \\
+Lookback period & 30 trading days \\
+State dimension & 120 ($4\times30$) \\
+Commissions during training & None \\
+Market impact during training & Disabled \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================
+\section{What Is Ignored}
+
+The following quantities are present in the codebase or configuration but have no effect on training or backtesting:
+
+\begin{itemize}
+  \item \textbf{RSI, MACD, Bollinger bands, market impact} listed under \texttt{rl.features} in \texttt{config.yaml} --- not read by the environment.
+  \item \textbf{\texttt{lookback\_window: 20}} in \texttt{config.yaml} under \texttt{rl} --- not read; the environment uses the \texttt{backtesting.lookback\_period} key (defaulting to 30).
+  \item \textbf{Daily data frame} passed to the environment --- not used inside \texttt{step()} or \texttt{\_get\_observation()}.
+  \item \textbf{Commission and minimum commission} settings in \texttt{backtesting} --- applied only in the classical momentum backtest (\texttt{backtest.py}), not in the RL environment.
+  \item \textbf{Adversarial price perturbation in the environment} (the \texttt{robust\_params} branch in \texttt{step()}) --- never activated because \texttt{robust\_params=None} is passed at all call sites.
+  \item \textbf{The \texttt{u\_star\_\{type\}.npy} file} produced during training --- loaded by the environment's step function but since that branch is never entered, it has no effect.
+\end{itemize}
+
+\end{document}

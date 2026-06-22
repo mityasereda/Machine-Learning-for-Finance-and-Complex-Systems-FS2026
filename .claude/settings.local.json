@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git ls-remote *)",
+      "Bash(python train_robust_rl.py)",
+      "Bash(python3 train_robust_rl.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(python *)",
+      "Bash(git *)"
+    ]
+  }
+}
