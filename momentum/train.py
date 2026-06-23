@@ -51,6 +51,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None, model_dir='mod
         df_intra,
         df_daily,
         config,
+        initial_cash=config['backtesting']['initial_aum'],
         consider_market_impact=False,
         robust_params=None,
         granularity=granularity,

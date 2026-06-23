@@ -38,6 +38,7 @@ def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=T
         df_intra,
         df_daily,
         config,
+        initial_cash=config['backtesting']['initial_aum'],
         consider_market_impact=consider_market_impact,
         granularity=granularity,
     )
@@ -55,6 +56,7 @@ def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=T
     positions = []
     trades = []
     daily_returns = []
+    dates = []
     
     # Reset environment
     state = env.reset()
@@ -71,6 +73,8 @@ def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=T
         portfolio_values.append(info['portfolio_value'])
         positions.append(info['position'])
         daily_returns.append(info['returns'])
+        if 'date' in info:
+            dates.append(info['date'])
         
         # Update state
         state = next_state
@@ -94,7 +98,8 @@ def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=T
         'daily_returns': period_returns,
         'cumulative_returns': cumulative_returns,
         'sharpe_ratio': sharpe_ratio,
-        'max_drawdown': max_drawdown
+        'max_drawdown': max_drawdown,
+        'dates': pd.to_datetime(dates) if dates else None,
     }
 
 def final_backtest_rl(ticker, model_path):

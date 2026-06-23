@@ -21,7 +21,7 @@ class BacktestEngine:
             self.market_impact = MarketImpactCalculator(
                 api_key=data_config.get('api_key'),
                 market_impact_window=market_impact_config.get('window', 15),
-                impact_threshold=market_impact_config.get('impact_threshold', 0.01),
+                eta=market_impact_config.get('eta', 0.1),
                 max_impact=market_impact_config.get('max_impact', 0.10),
                 fallback_model=market_impact_config.get('fallback_model', True),
                 api_retry_limit=market_impact_config.get('api_retry_limit', 3),
@@ -88,38 +88,43 @@ class BacktestEngine:
                 # Apply trading frequency
                 exposure = self.strategy.apply_trading_frequency(signals, current_day_data['min_from_open'])
 
-                # Calculate trades and PnL with market impact
-                trades_count = np.sum(np.abs(np.diff(np.append(exposure, 0))))
+                # Calculate trades and PnL
+                exposure_diff = np.diff(np.append(exposure, 0))
+                trades_count = np.sum(np.abs(exposure_diff))
                 change_1m = current_day_data['close'].diff()
 
-                # Calculate effective prices with market impact
-                if trades_count > 0:
-                    # For buys (positive exposure changes)
-                    buy_mask = np.diff(np.append(exposure, 0)) > 0
+                # gross_pnl from raw price returns — exposure × price change, no slippage mixed in
+                gross_pnl = np.sum(exposure * change_1m) * shares
+
+                # slippage cost — always a non-negative dollar deduction
+                # multiplied by position-change size, not old exposure, so sign never flips
+                slippage_cost = 0.0
+                if trades_count > 0 and self.consider_market_impact:
+                    buy_mask = exposure_diff > 0
                     if np.any(buy_mask):
                         buy_prices = current_day_data['close'].values[buy_mask]
-                        buy_volumes = shares * np.abs(np.diff(np.append(exposure, 0))[buy_mask])
+                        buy_volumes = shares * np.abs(exposure_diff[buy_mask])
                         effective_buy_prices = [
                             self.calculate_effective_price(ticker, p, v, 'buy', current_day_data.index[i])
                             for i, (p, v) in enumerate(zip(buy_prices, buy_volumes))
                         ]
-                        # For buys: higher effective price means worse execution
-                        change_1m[buy_mask] = buy_prices - np.array(effective_buy_prices)
+                        slippage_cost += np.sum(
+                            (np.array(effective_buy_prices) - buy_prices) * buy_volumes
+                        )
 
-                    # For sells (negative exposure changes)
-                    sell_mask = np.diff(np.append(exposure, 0)) < 0
+                    sell_mask = exposure_diff < 0
                     if np.any(sell_mask):
                         sell_prices = current_day_data['close'].values[sell_mask]
-                        sell_volumes = shares * np.abs(np.diff(np.append(exposure, 0))[sell_mask])
+                        sell_volumes = shares * np.abs(exposure_diff[sell_mask])
                         effective_sell_prices = [
                             self.calculate_effective_price(ticker, p, v, 'sell', current_day_data.index[i])
                             for i, (p, v) in enumerate(zip(sell_prices, sell_volumes))
                         ]
-                        # For sells: lower effective price means worse execution
-                        change_1m[sell_mask] = np.array(effective_sell_prices) - sell_prices
+                        slippage_cost += np.sum(
+                            (sell_prices - np.array(effective_sell_prices)) * sell_volumes
+                        )
 
-                gross_pnl = np.sum(exposure * change_1m) * shares
-                net_pnl = gross_pnl
+                net_pnl = gross_pnl - slippage_cost
 
                 # Update strategy metrics
                 strat.loc[current_day, 'AUM'] = previous_aum + net_pnl

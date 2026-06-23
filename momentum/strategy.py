@@ -43,7 +43,11 @@ class MomentumStrategy:
 
     def apply_trading_frequency(self, signals, min_from_open):
         """Apply trading signals at specified frequency"""
-        trade_indices = np.where(min_from_open % self.trade_freq == 0)[0]
+        if self.trade_freq >= len(min_from_open):
+            # Daily mode: signal fires once at market open (first bar of the day)
+            trade_indices = np.where(min_from_open == min_from_open.min())[0]
+        else:
+            trade_indices = np.where(min_from_open % self.trade_freq == 0)[0]
         exposure = np.full(len(signals), np.nan)
         exposure[trade_indices] = signals[trade_indices]
 

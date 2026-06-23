@@ -60,7 +60,7 @@ class TradingEnvironment(gym.Env):
             self.market_impact = MarketImpactCalculator(
                 api_key=data_config.get('api_key'),
                 market_impact_window=market_impact_config.get('window', 15),
-                impact_threshold=market_impact_config.get('impact_threshold', 0.01),
+                eta=market_impact_config.get('eta', 0.1),
                 max_impact=market_impact_config.get('max_impact', 0.10),
                 fallback_model=market_impact_config.get('fallback_model', True),
                 api_retry_limit=market_impact_config.get('api_retry_limit', 3),
@@ -346,7 +346,8 @@ class TradingEnvironment(gym.Env):
                 'volatility': volatility,
                 'effective_price': effective_price,
                 'market_price': current_price,
-                'price_impact': effective_price - current_price if abs(position_change) > 0 else 0
+                'price_impact': effective_price - current_price if abs(position_change) > 0 else 0,
+                'date': current_day,
             }
         else:
             # Minute-level step

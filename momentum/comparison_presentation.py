@@ -63,7 +63,7 @@ def load_rl_results(ticker):
     return results
 
 
-def load_buyandhold(ticker, start_date, initial_aum=100000.0):
+def load_buyandhold(ticker, start_date, initial_aum=10_000_000.0):
     df = pd.read_parquet(f"{DAILY_DIR}/{ticker}_daily.parquet")
     df.index = pd.to_datetime(df["caldt"])
     prices = df["close"].sort_index().loc[start_date:].dropna()
@@ -220,10 +220,17 @@ def main():
         mom_no, mom_wi = load_momentum(ticker)
         rl_results     = load_rl_results(ticker)
 
-        dates  = mom_no.index
-        rl_len = next((len(v["cumulative_returns"]) for v in rl_results.values()), None)
-        offset = (len(dates) - rl_len) if rl_len else 0
-        rl_dates = dates[offset:]
+        # Use actual trading dates from RL backtest if available; otherwise approximate via index offset
+        stored_dates = next(
+            (v["dates"] for v in rl_results.values() if v.get("dates") is not None), None
+        )
+        if stored_dates is not None:
+            rl_dates = stored_dates
+        else:
+            dates  = mom_no.index
+            rl_len = next((len(v["cumulative_returns"]) for v in rl_results.values()), None)
+            offset = (len(dates) - rl_len) if rl_len else 0
+            rl_dates = dates[offset:]
 
         stats = compute_all_stats(ticker, mom_no, mom_wi, rl_results, rl_dates)
         all_rows.extend(collect_stats_rows(ticker, stats))
