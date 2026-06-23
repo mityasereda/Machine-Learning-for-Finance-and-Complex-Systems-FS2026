@@ -6,23 +6,29 @@ META,RL (Vanilla PPO),no,-11.9026,-0.7894,-28.6924,34.4439
 META,RL (Vanilla PPO),with,-18.1069,-1.2692,-33.3605,36.0382
 META,"Robust RL (Elliptic, p1N2)",no,40.1201,2.6651,-13.1974,35.5779
 META,"Robust RL (Elliptic, p1N2)",with,34.6533,2.3029,-14.8477,36.8044
-META,"Robust RL (Ball, p1)",no,-15.7779,-0.856,-31.6354,41.8003
-META,"Robust RL (Ball, p1)",with,-21.3816,-1.2334,-33.8201,43.1314
+META,Robust RL (Dynamic Radius),no,11.4182,1.1807,-11.3244,27.1777
+META,Robust RL (Dynamic Radius),with,5.4435,0.6347,-12.4347,28.19
+META,"Robust RL (Ball, p1)",no,-13.9283,-0.2067,-48.0502,68.7961
+META,"Robust RL (Ball, p1)",with,-19.549,-0.4377,-48.8242,70.3427
 MSFT,Buy & Hold,—,-2.5724,0.0053,-26.9942,37.6161
 MSFT,Momentum (Classical),no,7.7852,1.5329,-6.3873,13.4262
 MSFT,Momentum (Classical),with,8.6849,1.7484,-6.0455,12.9874
-MSFT,RL (Vanilla PPO),no,9.4527,1.0413,-9.7341,25.9978
-MSFT,RL (Vanilla PPO),with,7.1696,0.8231,-10.8016,26.2386
-MSFT,"Robust RL (Elliptic, p1N2)",no,4.9451,0.6227,-7.9024,25.6435
-MSFT,"Robust RL (Elliptic, p1N2)",with,3.4561,0.4739,-8.2046,25.9388
-MSFT,"Robust RL (Ball, p1)",no,1.4654,0.2856,-10.4693,21.7413
-MSFT,"Robust RL (Ball, p1)",with,-2.3768,-0.1703,-12.9866,22.304
+MSFT,RL (Vanilla PPO),no,-1.1294,-0.0429,-10.985,20.5266
+MSFT,RL (Vanilla PPO),with,-16.0123,-1.4537,-21.1941,28.5701
+MSFT,"Robust RL (Elliptic, p1N2)",no,1.2081,0.254,-11.9751,21.333
+MSFT,"Robust RL (Elliptic, p1N2)",with,-1.5569,-0.0808,-13.4335,21.7711
+MSFT,Robust RL (Dynamic Radius),no,3.7776,0.539,-7.6313,22.9733
+MSFT,Robust RL (Dynamic Radius),with,-0.7319,0.0378,-8.9869,23.7145
+MSFT,"Robust RL (Ball, p1)",no,-20.8453,-2.0319,-27.4552,28.1856
+MSFT,"Robust RL (Ball, p1)",with,-27.5014,-2.6682,-33.1502,29.8899
 SPY,Buy & Hold,—,0.6114,0.1874,-17.0212,24.5113
 SPY,Momentum (Classical),no,16.8824,3.4233,-1.9833,12.186
 SPY,Momentum (Classical),with,15.5987,3.2412,-1.9835,11.9669
-SPY,RL (Vanilla PPO),no,1.0055,0.2517,-7.3041,14.7173
-SPY,RL (Vanilla PPO),with,9.1721,1.6006,-5.6884,15.1083
-SPY,"Robust RL (Elliptic, p1N2)",no,7.8496,1.2564,-8.7582,16.9294
-SPY,"Robust RL (Elliptic, p1N2)",with,18.2758,2.6987,-6.0084,16.8635
-SPY,"Robust RL (Ball, p1)",no,6.3103,1.2002,-8.1462,14.2275
-SPY,"Robust RL (Ball, p1)",with,12.982,2.2731,-6.9491,14.569
+SPY,RL (Vanilla PPO),no,-5.4265,-0.6684,-8.908,19.1477
+SPY,RL (Vanilla PPO),with,1.5666,0.3098,-8.5247,19.069
+SPY,"Robust RL (Elliptic, p1N2)",no,0.3113,0.1382,-11.8507,18.9915
+SPY,"Robust RL (Elliptic, p1N2)",with,3.4519,0.5735,-10.4943,18.5439
+SPY,Robust RL (Dynamic Radius),no,-0.5874,0.0135,-13.8712,19.0847
+SPY,Robust RL (Dynamic Radius),with,2.3371,0.4099,-12.095,19.2929
+SPY,"Robust RL (Ball, p1)",no,-1.4901,-0.0957,-12.2816,20.1362
+SPY,"Robust RL (Ball, p1)",with,1.8774,0.3483,-11.6615,19.3567

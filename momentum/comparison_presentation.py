@@ -17,6 +17,7 @@ ASSETS = ["META", "MSFT", "SPY"]
 STRATEGIES = {
     "no_robust":   {"label": "RL (Vanilla PPO)",           "color": "#2196F3"},
     "robust_p1N2": {"label": "Robust RL (Elliptic, p1N2)", "color": "#E53935"},
+    "robust_dynamic_radius": {"label": "Robust RL (Dynamic Radius)", "color": "#F3D321"},
     "robust_p1":   {"label": "Robust RL (Ball, p1)",       "color": "#43A047"},
     "momentum":    {"label": "Momentum (Classical)",        "color": "#FB8C00"},
     "bnh":         {"label": "Buy & Hold",                   "color": "#7B1FA2"},
@@ -30,6 +31,8 @@ TABLE_ROW_ORDER = [
     ("no_robust",   "with_impact"),
     ("robust_p1N2", "no_impact"),
     ("robust_p1N2", "with_impact"),
+    ("robust_dynamic_radius", "no_impact"),
+    ("robust_dynamic_radius", "with_impact"),
     ("robust_p1",   "no_impact"),
     ("robust_p1",   "with_impact"),
 ]
@@ -54,7 +57,8 @@ def load_rl_results(ticker):
         if not m:
             continue
         model_str, impact_mode = m.group(1), m.group(2)
-        if   "robust_p1N2" in model_str: stype = "robust_p1N2"
+        if   "robust_dynamic_radius" in model_str: stype = "robust_dynamic_radius"
+        elif "robust_p1N2" in model_str: stype = "robust_p1N2"
         elif "robust_p1"   in model_str: stype = "robust_p1"
         elif "no_robust"   in model_str: stype = "no_robust"
         else: continue
@@ -167,7 +171,7 @@ def plot_asset(ticker, mom_no, mom_wi, rl_results, rl_dates):
                 linewidth=1.8, linestyle=ls, zorder=2)
 
     # RL strategies
-    for stype in ["no_robust", "robust_p1N2", "robust_p1"]:
+    for stype in ["no_robust", "robust_p1N2", "robust_dynamic_radius", "robust_p1"]:
         for impact_mode in ["no_impact", "with_impact"]:
             key = (stype, impact_mode)
             if key not in rl_results:
@@ -187,7 +191,7 @@ def plot_asset(ticker, mom_no, mom_wi, rl_results, rl_dates):
 
     strategy_handles = [
         Line2D([0], [0], color=STRATEGIES[k]["color"], linewidth=2.5, label=STRATEGIES[k]["label"])
-        for k in ["momentum", "no_robust", "robust_p1N2", "robust_p1"]
+        for k in ["momentum", "no_robust", "robust_p1N2", "robust_dynamic_radius", "robust_p1"]
     ] + [Line2D([0], [0], color=STRATEGIES["bnh"]["color"], linewidth=2.5,
                 label=f"{ticker} Buy & Hold")]
     style_handles = [
