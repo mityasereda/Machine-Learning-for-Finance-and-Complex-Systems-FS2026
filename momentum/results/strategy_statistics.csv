@@ -6,6 +6,8 @@ META,RL (Vanilla PPO),no,6.5202,0.7549,-14.4732,26.6969
 META,RL (Vanilla PPO),with,5.2305,0.6321,-15.1673,26.9185
 META,"Robust RL (Elliptic, p1N2)",no,3.6633,0.4823,-12.6636,26.9998
 META,"Robust RL (Elliptic, p1N2)",with,2.2631,0.3493,-13.1217,27.2318
+META,Robust RL (Dynamic Radius),no,11.4708,1.1839,-11.3261,27.2198
+META,Robust RL (Dynamic Radius),with,8.9107,0.9506,-11.7425,27.5821
 META,"Robust RL (Ball, p1)",no,-2.3586,-0.1994,-12.4739,20.6857
 META,"Robust RL (Ball, p1)",with,-3.7523,-0.377,-13.4673,20.8528
 MSFT,Buy & Hold,—,-5.181,-0.1794,-26.9942,37.6673
@@ -15,6 +17,8 @@ MSFT,RL (Vanilla PPO),no,14.4721,1.8229,-5.9694,20.6494
 MSFT,RL (Vanilla PPO),with,13.194,1.6706,-6.2183,20.7806
 MSFT,"Robust RL (Elliptic, p1N2)",no,10.2544,1.6283,-5.6409,16.5841
 MSFT,"Robust RL (Elliptic, p1N2)",with,8.9367,1.4284,-5.8759,16.7084
+MSFT,Robust RL (Dynamic Radius),no,3.8185,0.5426,-7.642,23.0391
+MSFT,Robust RL (Dynamic Radius),with,1.5742,0.2927,-8.0556,23.3637
 MSFT,"Robust RL (Ball, p1)",no,13.7768,2.722,-3.3908,12.7528
 MSFT,"Robust RL (Ball, p1)",with,12.4399,2.4566,-3.8641,12.8726
 SPY,Buy & Hold,—,-0.5789,0.0602,-17.0212,24.4606
@@ -24,5 +28,7 @@ SPY,RL (Vanilla PPO),no,7.2892,1.4849,-4.995,13.0112
 SPY,RL (Vanilla PPO),with,5.7466,1.184,-5.2832,13.1164
 SPY,"Robust RL (Elliptic, p1N2)",no,8.8224,1.8749,-3.0369,12.2404
 SPY,"Robust RL (Elliptic, p1N2)",with,7.6522,1.6409,-3.1378,12.2556
+SPY,Robust RL (Dynamic Radius),no,-0.6106,0.011,-13.9183,19.1612
+SPY,Robust RL (Dynamic Radius),with,-1.8629,-0.1606,-14.5442,19.2737
 SPY,"Robust RL (Ball, p1)",no,-0.8311,-0.1005,-9.6125,13.1811
 SPY,"Robust RL (Ball, p1)",with,-1.7938,-0.2937,-9.8712,13.2148
