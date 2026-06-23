@@ -16,3 +16,4 @@ portfolio-rebalancing/data/
 # Result artifacts (regenerable)
 *.pkl
 *.npy
+.venv/

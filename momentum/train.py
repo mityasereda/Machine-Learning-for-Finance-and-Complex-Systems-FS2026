@@ -9,6 +9,11 @@ from tqdm import tqdm
 import wandb
 from backtest_rl import final_backtest_rl
 from seed_utils import set_seed
+from train_dynamic_radius import (
+    DEFAULT_COVERAGE_Q,
+    calibrate_beta,
+    split_train_calibration,
+)
 os.environ["WANDB_SILENT"] = "true"
 
 
@@ -29,7 +34,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None, model_dir='mod
     if config['wandb']['enabled']:
         # Create a meaningful run name
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
+        robust_str = robust_params.get("model_label", f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}") if robust_params else "no_robust"
         run_name = f"{ticker}_PPO_{robust_str}_lr{config['rl']['learning_rate']}_gamma{config['rl']['gamma']}_ep{config['rl']['num_episodes']}_{timestamp}"
         
         wandb.init(
@@ -158,7 +163,7 @@ def train(config, df_intra, df_daily, ticker, robust_params=None, model_dir='mod
         })
         
         # Generate model name with robust params
-        robust_str = f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}" if robust_params else "no_robust"
+        robust_str = robust_params.get("model_label", f"robust_{robust_params['robust_type']}_beta{robust_params['beta']}") if robust_params else "no_robust"
         
         # Save model if it's the best so far
         if episode_reward > best_reward:
@@ -218,6 +223,21 @@ def main():
         model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params_p1n2, model_dir='robust_models')
         comparison_results = final_backtest_rl(ticker, model_path)
         print("Robust RL (p1N2) Backtest Results: ", comparison_results)
+
+        # Robust PPO p1N2 with calibrated dynamic radius
+        print("#"*100)
+        print(f"\nTraining Robust RL model (dynamic radius) for {ticker}")
+        train_intra, train_daily, calibration_intra, calibration_daily = split_train_calibration(df_intra, df_daily)
+        nominal_model_path = train(config, train_intra, train_daily, ticker, robust_params=None, model_dir='dynamic_radius_models')
+        robust_params_dynamic = robust_params_p1n2.copy()
+        robust_params_dynamic["beta"] = calibrate_beta(
+            config, calibration_intra, calibration_daily, ticker, nominal_model_path,
+            robust_params_dynamic, coverage_q=config.get('dynamic_radius', {}).get('coverage_q', DEFAULT_COVERAGE_Q)
+        )
+        robust_params_dynamic["model_label"] = "robust_dynamic_radius"
+        model_path = train(config, train_intra, train_daily, ticker, robust_params=robust_params_dynamic, model_dir='dynamic_radius_models')
+        comparison_results = final_backtest_rl(ticker, model_path)
+        print("Robust RL (dynamic radius) Backtest Results: ", comparison_results)
 
         # Robust PPO p1 (ball uncertainty set)
         print("#"*100)
