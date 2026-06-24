@@ -196,20 +196,11 @@ def main():
     until_date = '2022-05-09'
 
     for ticker in assets:
-        # Load data
+        # Load data and split once — all strategies train on the same 80% window
+        # so that comparisons are not confounded by training data size
         df_intra, df_daily = load_data(ticker, from_date, until_date)
-        
-        print("#"*100)
-        print(f"\nTraining RL model for {ticker}")
-        print(config) 
-        # Vanilla PPO
-        model_path = train(config, df_intra, df_daily, ticker, robust_params=None, model_dir='models')
-        comparison_results = final_backtest_rl(ticker, model_path)
-        print("RL Backtest Results: ", comparison_results)
+        train_intra, train_daily, calibration_intra, calibration_daily = split_train_calibration(df_intra, df_daily)
 
-        # Robust PPO p1N2 (elliptic uncertainty set)
-        print("#"*100)
-        print(f"\nTraining Robust RL model (p1N2) for {ticker}")
         robust_params_p1n2 = {
             "robust_type": "p1N2",
             "beta": 1e-4,
@@ -220,14 +211,31 @@ def main():
             "focus_sell":  [ 1.5e-5, 0, -1.5e-5],
             "focus_sell_2":[ 4.5e-5, 0, -4.5e-5],
         }
-        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params_p1n2, model_dir='robust_models')
+        robust_params_p1 = {
+            "robust_type": "p1",
+            "beta": 1e-4,
+            "epsilon": 1e-3,
+            "u_dim": 3,
+        }
+
+        print("#"*100)
+        print(f"\nTraining RL model for {ticker}")
+        print(config)
+        # Vanilla PPO
+        model_path = train(config, train_intra, train_daily, ticker, robust_params=None, model_dir='models')
+        comparison_results = final_backtest_rl(ticker, model_path)
+        print("RL Backtest Results: ", comparison_results)
+
+        # Robust PPO p1N2 (elliptic uncertainty set, fixed beta)
+        print("#"*100)
+        print(f"\nTraining Robust RL model (p1N2) for {ticker}")
+        model_path = train(config, train_intra, train_daily, ticker, robust_params=robust_params_p1n2, model_dir='robust_models')
         comparison_results = final_backtest_rl(ticker, model_path)
         print("Robust RL (p1N2) Backtest Results: ", comparison_results)
 
         # Robust PPO p1N2 with calibrated dynamic radius
         print("#"*100)
         print(f"\nTraining Robust RL model (dynamic radius) for {ticker}")
-        train_intra, train_daily, calibration_intra, calibration_daily = split_train_calibration(df_intra, df_daily)
         nominal_model_path = train(config, train_intra, train_daily, ticker, robust_params=None, model_dir='dynamic_radius_models')
         robust_params_dynamic = robust_params_p1n2.copy()
         robust_params_dynamic["beta"] = calibrate_beta(
@@ -242,13 +250,7 @@ def main():
         # Robust PPO p1 (ball uncertainty set)
         print("#"*100)
         print(f"\nTraining Robust RL model (p1 ball) for {ticker}")
-        robust_params_p1 = {
-            "robust_type": "p1",
-            "beta": 1e-4,
-            "epsilon": 1e-3,
-            "u_dim": 3,
-        }
-        model_path = train(config, df_intra, df_daily, ticker, robust_params=robust_params_p1, model_dir='ball_models')
+        model_path = train(config, train_intra, train_daily, ticker, robust_params=robust_params_p1, model_dir='ball_models')
         comparison_results = final_backtest_rl(ticker, model_path)
         print("Robust RL (p1 ball) Backtest Results: ", comparison_results)
 
