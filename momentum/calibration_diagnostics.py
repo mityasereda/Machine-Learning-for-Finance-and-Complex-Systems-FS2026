@@ -38,7 +38,8 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def collect_residual_norms(config, df_intra, df_daily, ticker, nominal_model_path):
+def collect_residual_norms(config, df_intra, df_daily, ticker, nominal_model_path,
+                           ctx_intra=None, ctx_daily=None):
     """
     Run the nominal model over the calibration data in two parallel environments
     (with and without market impact) and return a DataFrame with one row per
@@ -46,14 +47,20 @@ def collect_residual_norms(config, df_intra, df_daily, ticker, nominal_model_pat
     """
     granularity = config["backtesting"].get("granularity", "day")
 
+    if ctx_intra is not None and not ctx_intra.empty:
+        env_intra = pd.concat([ctx_intra, df_intra], ignore_index=True)
+        env_daily = pd.concat([ctx_daily, df_daily], ignore_index=True)
+    else:
+        env_intra, env_daily = df_intra, df_daily
+
     nominal_env = TradingEnvironment(
-        df_intra, df_daily, config,
+        env_intra, env_daily, config,
         initial_cash=config["backtesting"]["initial_aum"],
         consider_market_impact=False,
         ticker=ticker, robust_params=None, granularity=granularity,
     )
     realised_env = TradingEnvironment(
-        df_intra, df_daily, config,
+        env_intra, env_daily, config,
         initial_cash=config["backtesting"]["initial_aum"],
         consider_market_impact=True,
         ticker=ticker, robust_params=None, granularity=granularity,
@@ -190,11 +197,12 @@ def main():
 
         print("  Loading data and splitting 80/20...")
         df_intra, df_daily = get_data(ticker, from_date, until_date)
-        _, _, calibration_intra, calibration_daily = split_train_calibration(df_intra, df_daily)
+        _, _, calibration_intra, calibration_daily, ctx_intra, ctx_daily = split_train_calibration(df_intra, df_daily)
 
         print("  Running calibration rollout...")
         df_norms = collect_residual_norms(
-            config, calibration_intra, calibration_daily, ticker, nominal_model_path
+            config, calibration_intra, calibration_daily, ticker, nominal_model_path,
+            ctx_intra=ctx_intra, ctx_daily=ctx_daily,
         )
 
         if df_norms.empty:

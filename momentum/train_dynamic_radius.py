@@ -33,7 +33,8 @@ def load_data(ticker, from_date, until_date):
     df_daily.to_csv('data/daily_data.csv', index=False)
     return df_intra, df_daily
 
-def split_train_calibration(df_intra, df_daily, calibration_fraction=DEFAULT_CALIBRATION_FRACTION):
+def split_train_calibration(df_intra, df_daily, calibration_fraction=DEFAULT_CALIBRATION_FRACTION,
+                            lookback_period=30):
     days = np.array(sorted(df_intra['day'].unique()))
     split_idx = int(len(days) * (1 - calibration_fraction))
     split_idx = min(max(split_idx, 1), len(days) - 1)
@@ -47,7 +48,14 @@ def split_train_calibration(df_intra, df_daily, calibration_fraction=DEFAULT_CAL
     daily['day'] = pd.to_datetime(daily['caldt']).dt.date
     train_daily = daily[daily['day'].isin(train_days)].copy()
     calibration_daily = daily[daily['day'].isin(calibration_days)].copy()
-    return train_intra, train_daily, calibration_intra, calibration_daily
+
+    # Context buffer: last lookback_period trading days of the training split,
+    # prepended to the calibration data so the environment warm-up uses real history.
+    ctx_days = set(days[max(0, split_idx - lookback_period):split_idx])
+    ctx_intra = df_intra[df_intra['day'].isin(ctx_days)].copy()
+    ctx_daily = daily[daily['day'].isin(ctx_days)].copy()
+
+    return train_intra, train_daily, calibration_intra, calibration_daily, ctx_intra, ctx_daily
 
 def elliptic_l1_norm(residual, side, robust_params):
     residual_vector = np.array([-residual, 0.0, residual])
@@ -60,17 +68,24 @@ def elliptic_l1_norm(residual, side, robust_params):
     return np.sum(np.abs(residual_vector - focus_1)) + np.sum(np.abs(residual_vector - focus_2))
 
 def calibrate_beta(config, df_intra, df_daily, ticker, nominal_model_path, robust_params,
-                   coverage_q=DEFAULT_COVERAGE_Q):
+                   coverage_q=DEFAULT_COVERAGE_Q, ctx_intra=None, ctx_daily=None):
     if not 0 < coverage_q < 1:
         raise ValueError("coverage_q must be in (0, 1)")
 
     granularity = config['backtesting'].get('granularity', 'day')
+
+    if ctx_intra is not None and not ctx_intra.empty:
+        env_intra = pd.concat([ctx_intra, df_intra], ignore_index=True)
+        env_daily = pd.concat([ctx_daily, df_daily], ignore_index=True)
+    else:
+        env_intra, env_daily = df_intra, df_daily
+
     nominal_env = TradingEnvironment(
-        df_intra, df_daily, config, consider_market_impact=False,
+        env_intra, env_daily, config, consider_market_impact=False,
         ticker=ticker, robust_params=None, granularity=granularity,
     )
     realised_env = TradingEnvironment(
-        df_intra, df_daily, config, consider_market_impact=True,
+        env_intra, env_daily, config, consider_market_impact=True,
         ticker=ticker, robust_params=None, granularity=granularity,
     )
     trainer = PPOTrainer(
@@ -280,12 +295,13 @@ def main():
         from_date = '2021-05-09'
         until_date = '2022-05-09' 
         df_intra, df_daily = load_data(ticker, from_date, until_date) 
-        train_intra, train_daily, calibration_intra, calibration_daily = split_train_calibration(df_intra, df_daily)
+        train_intra, train_daily, calibration_intra, calibration_daily, ctx_intra, ctx_daily = split_train_calibration(df_intra, df_daily)
         nominal_model_path = train(config, train_intra, train_daily, ticker, robust_params=None)
         ticker_robust_params = robust_params.copy()
         ticker_robust_params["beta"] = calibrate_beta(
             config, calibration_intra, calibration_daily, ticker, nominal_model_path,
-            ticker_robust_params, coverage_q=config.get('dynamic_radius', {}).get('coverage_q', DEFAULT_COVERAGE_Q)
+            ticker_robust_params, coverage_q=config.get('dynamic_radius', {}).get('coverage_q', DEFAULT_COVERAGE_Q),
+            ctx_intra=ctx_intra, ctx_daily=ctx_daily,
         )
         print(f"Calibrated beta for {ticker}: {ticker_robust_params['beta']}")
         model_path = train(config, train_intra, train_daily, ticker, robust_params=ticker_robust_params)

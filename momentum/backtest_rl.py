@@ -29,14 +29,36 @@ def load_data(ticker, from_date, until_date, override=False):
         df_daily.to_csv('data/daily_data.csv', index=False)
     return df_intra, df_daily
 
-def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=True):
+def get_context_buffer(ticker, before_date, lookback_period):
+    """Load the last lookback_period trading days before before_date as a warm-up context."""
+    ctx_intra, ctx_daily = get_data(ticker, '2022-04-01', before_date)
+    if ctx_intra.empty:
+        return ctx_intra, ctx_daily
+    days = sorted(ctx_intra['day'].unique())
+    ctx_days = set(days[-lookback_period:])
+    ctx_daily = ctx_daily.copy()
+    ctx_daily['day'] = pd.to_datetime(ctx_daily['caldt']).dt.date
+    return (
+        ctx_intra[ctx_intra['day'].isin(ctx_days)].copy(),
+        ctx_daily[ctx_daily['day'].isin(ctx_days)].copy(),
+    )
+
+
+def backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=True,
+                ctx_intra=None, ctx_daily=None):
     """Backtest the trained RL model"""
     granularity = config['backtesting'].get('granularity', 'day')
 
+    if ctx_intra is not None and not ctx_intra.empty:
+        env_intra = pd.concat([ctx_intra, df_intra], ignore_index=True)
+        env_daily = pd.concat([ctx_daily, df_daily], ignore_index=True)
+    else:
+        env_intra, env_daily = df_intra, df_daily
+
     # Create environment
     env = TradingEnvironment(
-        df_intra,
-        df_daily,
+        env_intra,
+        env_daily,
         config,
         initial_cash=config['backtesting']['initial_aum'],
         consider_market_impact=consider_market_impact,
@@ -117,14 +139,22 @@ def final_backtest_rl(ticker, model_path):
     if df_intra.empty or df_daily.empty:
         print(f"Warning: API returned empty data for {ticker} from {from_date} to {until_date}")
         return
-    
+
+    # Load context buffer: last lookback_period trading days before the test window
+    lookback_period = config['rl'].get('lookback_window', 30)
+    ctx_intra, ctx_daily = get_context_buffer(ticker, from_date, lookback_period)
+
     # Run backtest without market impact
     print("Running backtest without market impact...")
-    results_no_impact = backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=False)
-    
+    results_no_impact = backtest_rl(config, df_intra, df_daily, model_path,
+                                    consider_market_impact=False,
+                                    ctx_intra=ctx_intra, ctx_daily=ctx_daily)
+
     # Run backtest with market impact
     print("\nRunning backtest with market impact...")
-    results_with_impact = backtest_rl(config, df_intra, df_daily, model_path, consider_market_impact=True)
+    results_with_impact = backtest_rl(config, df_intra, df_daily, model_path,
+                                      consider_market_impact=True,
+                                      ctx_intra=ctx_intra, ctx_daily=ctx_daily)
     
     # save results (dict) to pickle
     with open(f'backtest_rl_results/{model_name}_no_impact.pkl', 'wb') as f:
@@ -140,9 +170,8 @@ def final_backtest_rl(ticker, model_path):
     
     # Calculate SPY performance using daily returns, starting from lookback period
     initial_portfolio_value = results_no_impact['portfolio_values'][0]
-    lookback_period = config['backtesting'].get('lookback_period', 30)
     spy_returns = df_daily['close'].pct_change().dropna()
-    spy_returns = spy_returns[lookback_period:lookback_period + len(results_no_impact['portfolio_values'])]
+    spy_returns = spy_returns[:len(results_no_impact['portfolio_values'])]
     spy_cumulative = initial_portfolio_value * (1 + spy_returns).cumprod()
     ticker_label = model_name.split('_', 1)[0]
     plt.plot(x_values, spy_cumulative.values, label=f'{ticker_label} Price', linestyle='--', alpha=0.7)
