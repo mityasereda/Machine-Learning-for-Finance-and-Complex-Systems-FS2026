@@ -57,7 +57,7 @@ rl:
   batch_size: 64
 
   # Training Parameters
-  num_episodes: 20
+  num_episodes: 10
   max_steps: 1000 # 1000 - 1000 is the last applicable episode
   save_interval: 100  # Save model every N episodes
 
