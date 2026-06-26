@@ -67,7 +67,7 @@ rl:
   reward_scaling: 1.0
 
   # State Space
-  lookback_window: 20  # Number of time steps to look back
+  lookback_window: 30  # Number of time steps to look back (min 20 due to rolling volatility)
   features:
     - price
     - volume

@@ -24,7 +24,7 @@ class TradingEnvironment(gym.Env):
             raise ValueError("granularity must be either 'day' or 'minute'")
             
         # Calculate lookback period from config
-        self.lookback_period = config['backtesting'].get('lookback_period', 30)
+        self.lookback_period = config['rl'].get('lookback_window', 30)
         
         # Get unique days for episode steps
         self.days = sorted(df_intra['day'].unique())
