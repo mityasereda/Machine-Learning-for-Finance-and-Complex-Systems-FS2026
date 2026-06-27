@@ -79,3 +79,8 @@ rl:
   # Action Space
   max_position_size: 1.0  # Maximum position size as fraction of portfolio
   position_step: 0.1     # Step size for position changes
+
+# Dynamic Radius Calibration Parameters
+dynamic_radius:
+  calibration_fraction: 0.2  # Fraction of training data held out for beta calibration
+  coverage_q: 0.90           # Quantile of residual norms used to set beta

@@ -241,7 +241,10 @@ def main():
         # Robust PPO p1N2 with calibrated dynamic radius — 80% train, 20% calibration
         print("#"*100)
         print(f"\nTraining Robust RL model (dynamic radius) for {ticker}")
-        train_intra, train_daily, calibration_intra, calibration_daily, ctx_intra, ctx_daily = split_train_calibration(df_intra, df_daily)
+        train_intra, train_daily, calibration_intra, calibration_daily, ctx_intra, ctx_daily = split_train_calibration(
+            df_intra, df_daily,
+            calibration_fraction=config.get('dynamic_radius', {}).get('calibration_fraction', 0.2),
+        )
         nominal_model_path = train(config, train_intra, train_daily, ticker, robust_params=None, model_dir='dynamic_radius_models')
         robust_params_dynamic = robust_params_p1n2.copy()
         robust_params_dynamic["beta"] = calibrate_beta(
