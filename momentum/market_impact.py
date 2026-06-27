@@ -21,7 +21,8 @@ class MarketImpactCalculator:
                  market_impact_window=15, eta=0.1, max_impact=0.10,
                  fallback_model=True, api_retry_limit=3, cache_results=True,
                  provider="polygon", wrds_root_dir=None,
-                 wrds_trades_subdir="raw/taq_trades", wrds_file_format="parquet"):
+                 wrds_trades_subdir="raw/taq_trades", wrds_file_format="parquet",
+                 sigma_override=None, adv_override=None):
         self.api_key = api_key
         self.base_url = base_url
         self.market_impact_window = market_impact_window
@@ -31,6 +32,8 @@ class MarketImpactCalculator:
         self.api_retry_limit = api_retry_limit
         self.cache_results = cache_results
         self._cache = {}
+        self.sigma_override = sigma_override  # per-ticker or scalar daily return vol
+        self.adv_override = adv_override      # per-ticker or scalar ADV in shares
         self.provider = provider.lower()
         if wrds_root_dir:
             wrds_root = Path(wrds_root_dir).expanduser()
@@ -193,9 +196,12 @@ class MarketImpactCalculator:
     def calculate_fallback_impact(self, price, volume, side, ticker=None):
         """Fallback square-root impact using typical ADV when trade data is unavailable."""
         try:
-            adv = _FALLBACK_ADV.get(ticker, 20_000_000)
+            adv = (self.adv_override if self.adv_override is not None
+                   else _FALLBACK_ADV.get(ticker, 20_000_000))
+            sigma = (self.sigma_override if self.sigma_override is not None
+                     else _FALLBACK_SIGMA)
             participation_rate = volume / adv
-            impact = self.eta * _FALLBACK_SIGMA * np.sqrt(participation_rate)
+            impact = self.eta * sigma * np.sqrt(participation_rate)
             impact = min(impact, self.max_impact)
 
             impacted_price = price * (1 + impact) if side == 'buy' else price * (1 - impact)

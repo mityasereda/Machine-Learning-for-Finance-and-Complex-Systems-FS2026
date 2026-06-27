@@ -40,7 +40,7 @@ backtesting:
   market_impact:
     enabled: false  # Set to false to disable market impact calculations
     window: 15  # minutes to look back for market impact calculation
-    eta: 10.0  # total execution cost scaling (market impact + bid-ask spread + execution shortfall)
+    eta: 1.0  # Almgren-Chriss impact scaling; empirically reasonable for large-cap US equities
     max_impact: 0.10  # maximum allowed market impact (10%)
     fallback_model: true  # use fallback model when real-time data is unavailable
     api_retry_limit: 3  # number of retries for API calls
@@ -83,4 +83,4 @@ rl:
 # Dynamic Radius Calibration Parameters
 dynamic_radius:
   calibration_fraction: 0.2  # Fraction of training data held out for beta calibration
-  coverage_q: 0.90           # Quantile of residual norms used to set beta
+  coverage_q: 0.5           # Quantile of residual norms used to set beta

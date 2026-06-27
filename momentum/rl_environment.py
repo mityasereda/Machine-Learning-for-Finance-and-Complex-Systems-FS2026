@@ -57,6 +57,11 @@ class TradingEnvironment(gym.Env):
         
         if self.consider_market_impact:
             data_config = config.get('data', {})
+            # Compute ADV and daily return volatility from the actual data
+            adv_by_day = df_intra.groupby('day')['volume'].sum()
+            adv = float(adv_by_day.mean())
+            daily_close = df_intra.groupby('day')['close'].last().sort_index()
+            sigma = float(daily_close.pct_change().dropna().std())
             self.market_impact = MarketImpactCalculator(
                 api_key=data_config.get('api_key'),
                 market_impact_window=market_impact_config.get('window', 15),
@@ -68,7 +73,9 @@ class TradingEnvironment(gym.Env):
                 provider=data_config.get('provider', 'polygon'),
                 wrds_root_dir=data_config.get('wrds_root_dir'),
                 wrds_trades_subdir=data_config.get('wrds_trades_subdir', 'raw/taq_trades'),
-                wrds_file_format=data_config.get('wrds_file_format', 'parquet')
+                wrds_file_format=data_config.get('wrds_file_format', 'parquet'),
+                sigma_override=sigma,
+                adv_override=adv,
             )
         
         self.reset()
