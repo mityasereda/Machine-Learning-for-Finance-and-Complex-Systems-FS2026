@@ -1,0 +1,85 @@
+# Reproducibility
+seed: 42
+
+# API Configuration
+# ===============
+data:
+  provider: "wrds"  # "polygon" or "wrds"
+  api_key: "<YOUR_API_KEY>"
+  base_url: "https://api.polygon.io/"
+  enforce_rate_limit: false
+  wrds_root_dir: "../data/wrds"
+  wrds_intraday_subdir: "processed/intraday"
+  wrds_daily_subdir: "processed/daily"
+  wrds_trades_subdir: "raw/taq_trades"
+  wrds_file_format: "parquet"
+
+# Weights & Biases Configuration
+# ============================
+wandb:
+  enabled: false
+  project: "rl-trading"
+  entity: "<YOUR_WANDB_ENTITY>"
+
+# Trading Strategy Parameters
+# =========================
+# Initial capital and trading costs
+backtesting:
+  initial_aum: 100_000_000.0
+  granularity: "day"  # "day" or "minute"
+  commission: 0.0035
+  min_commission_per_order: 0.35
+  band_multiplier: 1
+  band_simplified: 0
+  trade_frequency: 390
+  position_sizing_type: "vol_target"
+  target_volatility: 0.02
+  max_leverage: 4
+  
+  # Market Impact Settings
+  market_impact:
+    enabled: false  # Set to false to disable market impact calculations
+    window: 15  # minutes to look back for market impact calculation
+    eta: 0.3  # Almgren-Chriss impact scaling; within empirical range of 0.1-0.3 for large-cap US equities
+    fallback_model: true  # use fallback model when real-time data is unavailable
+    api_retry_limit: 3  # number of retries for API calls
+    cache_results: true  # cache API results to reduce API calls
+
+# Reinforcement Learning Parameters
+rl:
+  # Model Architecture
+  hidden_dim: 256
+  learning_rate: 0.0003
+  gamma: 0.99  # Discount factor
+  epsilon: 0.2  # PPO clipping parameter
+  epochs: 10   # Number of epochs to update policy
+  batch_size: 64
+
+  # Training Parameters
+  num_episodes: 100
+  max_steps: 1000 # 1000 - 1000 is the last applicable episode
+  save_interval: 100  # Save model every N episodes
+
+  # Environment Parameters
+  initial_balance: 100000
+  transaction_cost: 0.001  # 0.1% transaction cost
+  reward_scaling: 1.0
+
+  # State Space
+  lookback_window: 30  # Number of time steps to look back (min 20 due to rolling volatility)
+  features:
+    - price
+    - volume
+    - rsi
+    - macd
+    - bollinger_bands
+    - market_impact
+
+  # Action Space
+  max_position_size: 1.0  # Maximum position size as fraction of portfolio
+  position_step: 0.1     # Step size for position changes
+
+# Dynamic Radius Calibration Parameters
+dynamic_radius:
+  calibration_fraction: 0.2  # Fraction of training data held out for beta calibration
+  coverage_q: 0.75           # Quantile of residual norms used to set beta

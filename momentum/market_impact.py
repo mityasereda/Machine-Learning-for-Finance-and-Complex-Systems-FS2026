@@ -27,7 +27,6 @@ class MarketImpactCalculator:
         self.base_url = base_url
         self.market_impact_window = market_impact_window
         self.eta = eta
-        self.max_impact = max_impact
         self.fallback_model = fallback_model
         self.api_retry_limit = api_retry_limit
         self.cache_results = cache_results
@@ -182,7 +181,6 @@ class MarketImpactCalculator:
             # Almgren-Chriss square-root model: impact = η × σ × √(V_trade / V_ADV)
             participation_rate = volume / adv_estimate
             impact = self.eta * price_volatility * np.sqrt(participation_rate)
-            impact = min(impact, self.max_impact)
 
             impacted_price = price * (1 + impact) if side == 'buy' else price * (1 - impact)
             return impacted_price if not np.isnan(impacted_price) and impacted_price > 0 else price
@@ -202,7 +200,6 @@ class MarketImpactCalculator:
                      else _FALLBACK_SIGMA)
             participation_rate = volume / adv
             impact = self.eta * sigma * np.sqrt(participation_rate)
-            impact = min(impact, self.max_impact)
 
             impacted_price = price * (1 + impact) if side == 'buy' else price * (1 - impact)
             return impacted_price if not np.isnan(impacted_price) and impacted_price > 0 else price
