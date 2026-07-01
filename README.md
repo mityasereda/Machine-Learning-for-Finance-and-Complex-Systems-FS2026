@@ -2,10 +2,7 @@
 
 This repository contains the source code and pre-trained models to reproduce the experiments presented in our paper. The code implements various reinforcement learning approaches for trading strategies, including standard RL, robust RL, and ball-constrained robust RL methods.
 
-## Repository Structure
-
-- `momentum/` — Robust RL trading agent and classical momentum benchmark (single-asset)
-- `portfolio-rebalancing/` — Portfolio rebalancing using RL techniques
+The main directory for all experiments is `momentum/`, which covers single-asset trading on META, MSFT, and SPY. Multi-asset trading is out of scope for this project.
 
 ---
 
@@ -23,7 +20,7 @@ The script pulls:
 - CRSP daily prices/dividends into processed daily files.
 - 1-minute intraday bars with the engineered columns expected by the repo.
 
-It keeps the file layout aligned with the optional WRDS loader introduced in `momentum/data.py` and `portfolio-rebalancing/data.py`.
+It keeps the file layout aligned with the WRDS loader in `momentum/data.py`.
 
 ---
 
@@ -37,7 +34,7 @@ All commands are run from the `momentum/` directory.
 python train.py
 ```
 
-Trains four model variants for each asset (META, MSFT, SPY):
+Trains four model variants for each asset (META, MSFT, SPY) and automatically runs the RL backtests upon completion:
 
 | Variant | Uncertainty Set | Output Directory |
 |---|---|---|
@@ -46,7 +43,7 @@ Trains four model variants for each asset (META, MSFT, SPY):
 | Robust PPO (Ball, p1) | Ball, p=1 | `ball_models/` |
 | Robust PPO (Dynamic Radius) | Elliptic, N=2, p=1 | `dynamic_radius_models/` |
 
-After each training run, backtesting is performed automatically over the period **2022-06-09 to 2022-12-09**. Results are saved as `.pkl` files in `backtest_rl_results/`.
+Backtest results are saved as `.pkl` files in `backtest_rl_results/`.
 
 > To train individual variants only, use `train_robust_rl.py` (elliptic), `train_ball_rl.py` (ball) or `train_dynamic_radius.py` (dynamic radius) instead.
 
@@ -62,7 +59,23 @@ Backtests the classical momentum strategy (breakout + volatility-targeted positi
 
 ---
 
-### Step 3 — Present results
+### Step 3 — Calibration diagnostics
+
+```bash
+python calibration_diagnostics.py
+```
+
+Rolls out the nominal policy on the 20% calibration holdout and collects elliptic L1 norms of the market-impact residuals. Outputs:
+
+| Output | Description |
+|---|---|
+| `calibration_results/calibration_summary.csv` | Per-asset summary statistics and calibrated β at each coverage quantile |
+| `calibration_results/{ticker}_residual_norm_histogram.png` | Distribution of residual norms over the calibration fold |
+| `calibration_results/{ticker}_residual_norm_timeseries.png` | Time evolution of residual norms over the calibration fold |
+
+---
+
+### Step 4 — Present results
 
 **Full strategy comparison (plots + CSV statistics):**
 ```bash
@@ -73,15 +86,22 @@ Outputs per-asset comparison plots and a unified statistics CSV:
 
 | Output | Description |
 |---|---|
-| `results/{ticker}_strategy_comparison.png` | Cumulative return plot: all strategies, with/without market impact |
-| `results/strategy_statistics.csv` | Total return, Sharpe ratio, max drawdown, annualised volatility for every strategy × impact mode |
+| `results/{ticker}_strategy_comparison.png` | Cumulative return plot for all strategies with market impact |
+| `results/strategy_statistics.csv` | Total return, Sharpe ratio, max drawdown, annualised volatility for every strategy |
 
-**Quick RL-only summary table:**
+**Side-by-side comparison (META and MSFT):**
 ```bash
-python backtest_rl_results/read_results.py
+python comparison_combined.py
 ```
 
-Aggregates all RL backtest pkl files into a wide-format CSV at `backtest_rl_results/rl_model_comparison.csv`.
+Produces `results/META_MSFT_combined_comparison.png` — a single figure with both assets and a shared legend, suitable for inclusion in the paper.
+
+**AUM scaling experiment:**
+```bash
+python run_aum_scaling.py
+```
+
+Re-evaluates Vanilla PPO and Dynamic Radius across AUM levels from \$100K to \$500M without retraining, and plots Sharpe and return degradation (no-MI minus with-MI) as a function of AUM. Outputs saved to `aum_scaling_results/`.
 
 ---
 
