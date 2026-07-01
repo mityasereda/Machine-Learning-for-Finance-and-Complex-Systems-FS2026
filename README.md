@@ -28,13 +28,16 @@ It keeps the file layout aligned with the WRDS loader in `momentum/data.py`.
 
 All commands are run from the `momentum/` directory.
 
+### The `.pkl` files are already preloaded, so one may skip directly to Steps 3 and 4.
+
 ### Step 1 — Train all RL models
 
 ```bash
 python train.py
 ```
 
-Trains four model variants for each asset (META, MSFT, SPY) and automatically runs the RL backtests upon completion:
+Trains four model variants for each asset (META, MSFT, SPY) and automatically runs the RL backtests upon completion.
+Parameter configuration can be done externally through the `config.yaml` file.
 
 | Variant | Uncertainty Set | Output Directory |
 |---|---|---|
