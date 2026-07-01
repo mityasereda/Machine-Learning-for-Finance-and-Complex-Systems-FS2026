@@ -153,53 +153,46 @@ def collect_stats_rows(ticker, stats):
 # ---------------------------------------------------------------------------
 
 def plot_asset(ticker, mom_no, mom_wi, rl_results, rl_dates):
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+    fig, ax = plt.subplots(figsize=(10, 6))
 
     bnh = load_buyandhold(ticker, rl_dates[0])
     bnh_cum = cum_return_from_aum(bnh) - cum_return_from_aum(bnh).iloc[0]
 
-    panel_cfg = [
-        ("no_impact",   mom_no, axes[0], "No Market Impact"),
-        ("with_impact", mom_wi, axes[1], "With Market Impact"),
-    ]
+    # Buy-and-hold
+    ax.plot(bnh_cum.index, bnh_cum.values,
+            color=STRATEGIES["bnh"]["color"], linewidth=1.2, alpha=0.8, zorder=1)
 
-    for impact_mode, mom_df, ax, panel_title in panel_cfg:
-        # Buy-and-hold
-        ax.plot(bnh_cum.index, bnh_cum.values,
-                color=STRATEGIES["bnh"]["color"], linewidth=1.2, alpha=0.8, zorder=1)
+    # Momentum (with impact)
+    cum = cum_return_from_aum(mom_wi["AUM"])
+    cum = cum.loc[rl_dates[0]:] - cum.loc[rl_dates[0]:].iloc[0]
+    ax.plot(cum.index, cum.values, color=STRATEGIES["momentum"]["color"],
+            linewidth=1.8, zorder=2)
 
-        # Momentum
-        cum = cum_return_from_aum(mom_df["AUM"])
-        cum = cum.loc[rl_dates[0]:] - cum.loc[rl_dates[0]:].iloc[0]
-        ax.plot(cum.index, cum.values, color=STRATEGIES["momentum"]["color"],
-                linewidth=1.8, zorder=2)
+    # RL strategies (with impact)
+    for stype in ["no_robust", "robust_p1N2", "robust_dynamic_radius", "robust_p1"]:
+        key = (stype, "with_impact")
+        if key not in rl_results:
+            continue
+        ax.plot(rl_dates, rl_results[key]["cumulative_returns"] * 100,
+                color=STRATEGIES[stype]["color"], linewidth=1.8, zorder=3)
 
-        # RL strategies
-        for stype in ["no_robust", "robust_p1N2", "robust_dynamic_radius", "robust_p1"]:
-            key = (stype, impact_mode)
-            if key not in rl_results:
-                continue
-            ax.plot(rl_dates, rl_results[key]["cumulative_returns"] * 100,
-                    color=STRATEGIES[stype]["color"], linewidth=1.8, zorder=3)
-
-        ax.axhline(0, color="black", linewidth=0.6, linestyle=":", alpha=0.5)
-        ax.xaxis.set_major_locator(mdates.MonthLocator())
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}%"))
-        ax.set_title(panel_title, fontsize=12, fontweight="bold")
-        ax.grid(True, linestyle=":", alpha=0.4)
-
-    axes[0].set_ylabel("Cumulative Return (%)", fontsize=11)
-    fig.suptitle(f"{ticker}  —  Strategy Comparison", fontsize=13, fontweight="bold", y=1.01)
+    ax.axhline(0, color="black", linewidth=0.6, linestyle=":", alpha=0.5)
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}%"))
+    ax.set_ylabel("Cumulative Return (%)", fontsize=11)
+    ax.set_title(f"{ticker}  —  Strategy Comparison (with Market Impact)",
+                 fontsize=13, fontweight="bold")
+    ax.grid(True, linestyle=":", alpha=0.4)
 
     legend_handles = [
         Line2D([0], [0], color=STRATEGIES[k]["color"], linewidth=2.5, label=STRATEGIES[k]["label"])
         for k in ["momentum", "no_robust", "robust_p1N2", "robust_dynamic_radius", "robust_p1"]
     ] + [Line2D([0], [0], color=STRATEGIES["bnh"]["color"], linewidth=2.5,
                 label=f"{ticker} Buy & Hold")]
-    axes[0].legend(handles=legend_handles, loc="upper left", fontsize=9,
-                   framealpha=0.9, title="Strategy", title_fontsize=9)
+    ax.legend(handles=legend_handles, loc="upper left", fontsize=9,
+              framealpha=0.9, title="Strategy", title_fontsize=9)
 
     plt.tight_layout()
     out_path = f"{OUTPUT_DIR}/{ticker}_strategy_comparison.png"

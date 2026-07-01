@@ -26,7 +26,7 @@ def ts():
 
 COVERAGE_LEVELS = [0.25, 0.50, 0.75, 0.90, 0.95]
 CONFIG_PATH     = "config.yaml"
-SWEEP_DIR       = "sweep_results"
+SWEEP_DIR       = "sweep_results_no_context_buffer"
 
 OUTPUT_DIRS = [
     "backtest_rl_results",

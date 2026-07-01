@@ -140,21 +140,18 @@ def final_backtest_rl(ticker, model_path):
         print(f"Warning: API returned empty data for {ticker} from {from_date} to {until_date}")
         return
 
-    # Load context buffer: last lookback_period trading days before the test window
-    lookback_period = config['rl'].get('lookback_window', 30)
-    ctx_intra, ctx_daily = get_context_buffer(ticker, from_date, lookback_period)
-
     # Run backtest without market impact
+    # No context buffer: the first lookback_period days of the test window are
+    # used as a warm-up buffer (features computed but no trades recorded),
+    # ensuring clean separation from the training period.
     print("Running backtest without market impact...")
     results_no_impact = backtest_rl(config, df_intra, df_daily, model_path,
-                                    consider_market_impact=False,
-                                    ctx_intra=ctx_intra, ctx_daily=ctx_daily)
+                                    consider_market_impact=False)
 
     # Run backtest with market impact
     print("\nRunning backtest with market impact...")
     results_with_impact = backtest_rl(config, df_intra, df_daily, model_path,
-                                      consider_market_impact=True,
-                                      ctx_intra=ctx_intra, ctx_daily=ctx_daily)
+                                      consider_market_impact=True)
     
     # save results (dict) to pickle
     with open(f'backtest_rl_results/{model_name}_no_impact.pkl', 'wb') as f:

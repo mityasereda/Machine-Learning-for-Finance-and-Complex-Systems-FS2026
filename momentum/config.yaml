@@ -25,7 +25,7 @@ wandb:
 # =========================
 # Initial capital and trading costs
 backtesting:
-  initial_aum: 100_000_000.0
+  initial_aum: 100000000.0
   granularity: "day"  # "day" or "minute"
   commission: 0.0035
   min_commission_per_order: 0.35

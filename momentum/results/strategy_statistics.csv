@@ -1,34 +1,34 @@
 ticker,strategy,market_impact,total_return,sharpe_ratio,max_drawdown,ann_volatility
-META,Buy & Hold,—,-33.9864,-0.9869,-51.4604,62.8583
-META,Momentum (Classical),no,-5.8976,-0.7686,-13.2613,14.4526
-META,Momentum (Classical),with,-13.7883,-1.9556,-16.9948,14.6135
-META,RL (Vanilla PPO),no,22.4399,1.8588,-8.641,23.4552
-META,RL (Vanilla PPO),with,13.2106,1.1528,-13.6476,24.2633
-META,"Robust RL (Elliptic, p1N2)",no,7.3257,0.5709,-25.3293,36.1497
-META,"Robust RL (Elliptic, p1N2)",with,-2.6399,0.0458,-27.4549,38.3209
-META,Robust RL (Dynamic Radius),no,51.7798,3.3256,-9.4531,26.363
-META,Robust RL (Dynamic Radius),with,44.8754,2.8856,-10.9914,27.1944
-META,"Robust RL (Ball, p1)",no,-13.7874,-0.5127,-30.5625,41.1796
-META,"Robust RL (Ball, p1)",with,-20.2848,-0.8323,-35.2531,43.2127
-MSFT,Buy & Hold,—,-2.9922,0.0128,-26.9942,36.2123
-MSFT,Momentum (Classical),no,5.0945,1.0233,-4.2274,10.224
-MSFT,Momentum (Classical),with,-7.8047,-1.4496,-9.6827,10.8007
-MSFT,RL (Vanilla PPO),no,-18.3955,-1.7481,-20.5989,22.0231
-MSFT,RL (Vanilla PPO),with,-24.8977,-2.378,-26.9113,23.1094
-MSFT,"Robust RL (Elliptic, p1N2)",no,-24.226,-1.9525,-32.107,26.7516
-MSFT,"Robust RL (Elliptic, p1N2)",with,-31.5649,-2.5186,-38.2242,28.6558
-MSFT,Robust RL (Dynamic Radius),no,6.0624,0.6939,-8.9468,19.9702
-MSFT,Robust RL (Dynamic Radius),with,-0.3791,0.0658,-10.3019,20.6349
-MSFT,"Robust RL (Ball, p1)",no,-1.7408,0.0476,-25.7196,31.852
-MSFT,"Robust RL (Ball, p1)",with,-4.7547,-0.1415,-27.4136,32.4082
-SPY,Buy & Hold,—,0.8928,0.1948,-17.0212,24.4999
-SPY,Momentum (Classical),no,5.5211,0.8437,-7.4362,13.8655
-SPY,Momentum (Classical),with,-1.4225,-0.1434,-10.3086,13.588
-SPY,RL (Vanilla PPO),no,6.2509,0.776,-7.8111,17.7829
-SPY,RL (Vanilla PPO),with,4.7317,0.6103,-8.5442,17.881
-SPY,"Robust RL (Elliptic, p1N2)",no,-2.562,-0.1285,-11.9242,21.9452
-SPY,"Robust RL (Elliptic, p1N2)",with,-3.037,-0.1724,-12.1565,21.9996
-SPY,Robust RL (Dynamic Radius),no,3.6149,0.5092,-15.7575,16.8364
-SPY,Robust RL (Dynamic Radius),with,1.6585,0.28,-16.8223,16.9831
-SPY,"Robust RL (Ball, p1)",no,2.8582,0.3975,-13.3654,18.6528
-SPY,"Robust RL (Ball, p1)",with,1.4761,0.2508,-13.8201,18.7878
+META,Buy & Hold,—,-30.453,-1.1156,-50.8486,64.4861
+META,Momentum (Classical),no,5.1764,1.0803,-4.2485,12.9015
+META,Momentum (Classical),with,-2.8441,-0.5272,-6.4576,12.6928
+META,RL (Vanilla PPO),no,22.4503,2.5761,-8.6402,21.5544
+META,RL (Vanilla PPO),with,22.3685,2.5669,-8.6935,21.5634
+META,"Robust RL (Elliptic, p1N2)",no,27.3326,2.3516,-7.7071,28.7025
+META,"Robust RL (Elliptic, p1N2)",with,27.2534,2.3451,-7.7194,28.7137
+META,Robust RL (Dynamic Radius),no,18.2334,1.8479,-10.996,25.5546
+META,Robust RL (Dynamic Radius),with,18.1938,1.8441,-11.0035,25.5604
+META,"Robust RL (Ball, p1)",no,-9.1682,-0.4303,-29.2944,39.6062
+META,"Robust RL (Ball, p1)",with,-9.2174,-0.4336,-29.3278,39.6212
+MSFT,Buy & Hold,—,-5.181,-0.1794,-26.9942,37.6673
+MSFT,Momentum (Classical),no,4.5527,1.2178,-4.2274,9.9019
+MSFT,Momentum (Classical),with,-4.2905,-1.0428,-8.2099,10.3984
+MSFT,RL (Vanilla PPO),no,-6.7598,-0.7752,-13.7266,20.8561
+MSFT,RL (Vanilla PPO),with,-6.8345,-0.7849,-13.7603,20.8636
+MSFT,"Robust RL (Elliptic, p1N2)",no,-13.8249,-1.376,-22.2508,25.8922
+MSFT,"Robust RL (Elliptic, p1N2)",with,-13.9054,-1.3845,-22.2856,25.9075
+MSFT,Robust RL (Dynamic Radius),no,23.388,2.5041,-8.1135,23.1131
+MSFT,Robust RL (Dynamic Radius),with,23.3365,2.499,-8.1225,23.1168
+MSFT,"Robust RL (Ball, p1)",no,-3.1615,-0.0816,-26.0691,33.7751
+MSFT,"Robust RL (Ball, p1)",with,-3.1952,-0.0842,-26.0856,33.7814
+SPY,Buy & Hold,—,-0.5789,0.0602,-17.0212,24.4606
+SPY,Momentum (Classical),no,6.1828,1.1037,-7.4362,15.1487
+SPY,Momentum (Classical),with,0.6455,0.1863,-10.3086,14.8212
+SPY,RL (Vanilla PPO),no,5.1858,0.858,-5.1259,17.1822
+SPY,RL (Vanilla PPO),with,5.1489,0.8526,-5.1394,17.1845
+SPY,"Robust RL (Elliptic, p1N2)",no,-0.8426,0.004,-11.7374,21.46
+SPY,"Robust RL (Elliptic, p1N2)",with,-0.8537,0.0027,-11.7432,21.4612
+SPY,Robust RL (Dynamic Radius),no,10.3222,1.5053,-8.0895,18.2417
+SPY,Robust RL (Dynamic Radius),with,10.2834,1.5,-8.0938,18.2445
+SPY,"Robust RL (Ball, p1)",no,7.1979,1.0921,-7.2831,18.2277
+SPY,"Robust RL (Ball, p1)",with,7.1622,1.0872,-7.2848,18.2301
