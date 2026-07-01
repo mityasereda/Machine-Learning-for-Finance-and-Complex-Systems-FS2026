@@ -6,7 +6,6 @@ This repository contains the source code and pre-trained models to reproduce the
 
 - `momentum/` — Robust RL trading agent and classical momentum benchmark (single-asset)
 - `portfolio-rebalancing/` — Portfolio rebalancing using RL techniques
-- `lobster/` — Order book data and market impact analysis tools
 
 ---
 
@@ -17,9 +16,14 @@ cd momentum
 pip install -r requirements.txt
 ```
 
-Configure API keys in `momentum/config.yaml`:
-- Replace `<YOUR_API_KEY>` with your Polygon.io API key (only needed if using the Polygon data provider)
-- Replace `<YOUR_WANDB_ENTITY>` with your Weights & Biases username if you want to track experiments
+To use your own data, you will need to extract it through the `extract_wrds_data.py` script, which requires a WRDS subscription.
+
+The script pulls:
+- TAQ daily trades tables into raw per-symbol daily files.
+- CRSP daily prices/dividends into processed daily files.
+- 1-minute intraday bars with the engineered columns expected by the repo.
+
+It keeps the file layout aligned with the optional WRDS loader introduced in `momentum/data.py` and `portfolio-rebalancing/data.py`.
 
 ---
 
@@ -33,17 +37,18 @@ All commands are run from the `momentum/` directory.
 python train.py
 ```
 
-Trains three model variants for each asset (META, MSFT, SPY):
+Trains four model variants for each asset (META, MSFT, SPY):
 
 | Variant | Uncertainty Set | Output Directory |
 |---|---|---|
 | Vanilla PPO | None | `models/` |
 | Robust PPO (Elliptic, p1N2) | Elliptic, N=2, p=1 | `robust_models/` |
 | Robust PPO (Ball, p1) | Ball, p=1 | `ball_models/` |
+| Robust PPO (Dynamic Radius) | Elliptic, N=2, p=1 | `dynamic_radius_models/` |
 
 After each training run, backtesting is performed automatically over the period **2022-06-09 to 2022-12-09**. Results are saved as `.pkl` files in `backtest_rl_results/`.
 
-> To train individual variants only, use `train_robust_rl.py` (elliptic) or `train_ball_rl.py` (ball) instead.
+> To train individual variants only, use `train_robust_rl.py` (elliptic), `train_ball_rl.py` (ball) or `train_dynamic_radius.py` (dynamic radius) instead.
 
 ---
 
@@ -80,16 +85,6 @@ Aggregates all RL backtest pkl files into a wide-format CSV at `backtest_rl_resu
 
 ---
 
-### Optional — Beta grid search (Robust Elliptic only)
-
-```bash
-python gridsearch/beta_gridsearch.py
-```
-
-Trains the p1N2 model across `beta ∈ {1e-4, 1e-3, 1e-2}` with fixed foci and selects the best beta using a composite score (`0.7 × mean Sharpe + 0.3 × min Sharpe` across assets). Outputs plots and statistics to `gridsearch/results/`.
-
----
-
 ## Pre-trained Models
 
 Pre-trained models are provided for immediate evaluation:
@@ -97,6 +92,7 @@ Pre-trained models are provided for immediate evaluation:
 - Vanilla PPO: `momentum/models/{ticker}_best_model_no_robust.pth`
 - Robust PPO (Elliptic): `momentum/robust_models/{ticker}_best_model_robust_p1N2_beta0.0001.pth`
 - Robust PPO (Ball): `momentum/ball_models/{ticker}_best_model_robust_p1_beta0.0001.pth`
+- Robust PPO (Dynamic Radius): `momentum/dynamic_radius_models/{ticker}_best_model_robust_dynamic_radius.pth`
 
 ---
 
@@ -125,16 +121,3 @@ Pre-trained models are provided for immediate evaluation:
 | Focus sell (u1, u2) | [1.5e-5, 0, -1.5e-5], [4.5e-5, 0, -4.5e-5] |
 
 Foci satisfy Theorem 3.5(b): `‖u1 − u2‖₁ = 6×10⁻⁵ < β = 10⁻⁴`.
-
----
-
-## Market Impact Analysis
-
-For analysing market impact using order book data:
-
-```bash
-cd lobster
-python vis_impact_v3.py
-```
-
-The `lobster/` directory contains LOBSTER sample files for order book analysis. For portfolio optimisation experiments, see the `portfolio-rebalancing/` directory.
